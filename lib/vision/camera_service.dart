@@ -1,4 +1,5 @@
 import 'package:camera/camera.dart';
+import 'package:flutter/foundation.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import 'burst.dart';
@@ -10,6 +11,9 @@ import 'burst.dart';
 /// later (torch, resolution, front lens), it changes here and nowhere else.
 class CameraService {
   CameraController? _controller;
+
+  /// The burst currently holding the camera stream, if any.
+  Future<List<BurstFrame>>? _burstInFlight;
 
   CameraController? get controller => _controller;
 
@@ -45,15 +49,36 @@ class CameraService {
 
       final controller = CameraController(
         rear,
-        ResolutionPreset.high,
+        // 720p is enough to read a page that fills the frame, and it is the
+        // resolution the live stream is sampled at too.
+        ResolutionPreset.medium,
         enableAudio: false,
-        imageFormatGroup: ImageFormatGroup.jpeg,
+        // NV21 is what Android hands over from its own image analysis
+        // pipeline, with no JPEG encoding in between. That is what makes a
+        // ten-frame burst take about a second instead of twenty.
+        imageFormatGroup: defaultTargetPlatform == TargetPlatform.android
+            ? ImageFormatGroup.nv21
+            : ImageFormatGroup.jpeg,
       );
 
       await controller.initialize();
+
+      // Keep FocusMode.auto pinned rather than relying on the default, which
+      // differs between devices and can leave a page permanently soft.
+      try {
+        await controller.setFocusMode(FocusMode.auto);
+      } catch (_) {
+        // Not every camera exposes focus control. Ignore.
+      }
+
       await controller.setFlashMode(FlashMode.off);
 
       _controller = controller;
+      debugPrint(
+        'camera: sensorOrientation=${rear.sensorOrientation} '
+        'lens=${rear.lensDirection.name} '
+        'preview=${controller.value.previewSize}',
+      );
       return null;
     } on CameraException catch (e) {
       final detail = e.description ?? e.code;
@@ -65,15 +90,55 @@ class CameraService {
   }
 
   /// Fires the ten-frame burst and returns the sharpest frames, best first.
+  ///
+  /// [isCancelled] lets a caller abandon a burst (the user pressed Stop).
+  /// Only one burst runs at a time: a second call waits for the first to
+  /// release the camera stream rather than failing and falling back to the
+  /// slow still-capture path.
   Future<List<BurstFrame>> burst({
     int shots = 10,
     int keep = 3,
     bool torch = false,
     void Function(int taken)? onProgress,
+    bool Function()? isCancelled,
   }) async {
     final camera = _controller;
     if (camera == null || !camera.value.isInitialized) return const [];
 
+    final previous = _burstInFlight;
+    if (previous != null) {
+      try {
+        await previous;
+      } catch (_) {
+        // The earlier burst failed; that is its caller's problem.
+      }
+    }
+
+    final running = _runBurst(
+      camera,
+      shots: shots,
+      keep: keep,
+      torch: torch,
+      onProgress: onProgress,
+      isCancelled: isCancelled,
+    );
+    _burstInFlight = running;
+
+    try {
+      return await running;
+    } finally {
+      if (identical(_burstInFlight, running)) _burstInFlight = null;
+    }
+  }
+
+  Future<List<BurstFrame>> _runBurst(
+    CameraController camera, {
+    required int shots,
+    required int keep,
+    required bool torch,
+    required void Function(int taken)? onProgress,
+    required bool Function()? isCancelled,
+  }) async {
     if (torch) {
       try {
         await camera.setFlashMode(FlashMode.torch);
@@ -88,6 +153,7 @@ class CameraService {
         shots: shots,
         keep: keep,
         onProgress: onProgress,
+        isCancelled: isCancelled,
       );
     } finally {
       if (torch) {

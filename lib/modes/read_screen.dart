@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 
@@ -28,6 +30,10 @@ class _ReadScreenState extends State<ReadScreen> with WidgetsBindingObserver {
   /// Bumped by [stop]. Any capture that finishes after that is discarded, so
   /// a stopped reading can never start speaking again a second later.
   int _runId = 0;
+
+  /// How many photos of the burst have landed. Shown on screen for sighted
+  /// helpers; the user hears speech instead.
+  int _taken = 0;
 
   @override
   void initState() {
@@ -84,13 +90,31 @@ class _ReadScreenState extends State<ReadScreen> with WidgetsBindingObserver {
     final run = ++_runId;
     setState(() {
       _busy = true;
+      _taken = 0;
       _lastText = '';
     });
 
     AudioBus.instance.say('Reading.');
 
+    // A blind user has no way to tell "working" from "frozen". If the burst is
+    // slower than expected, say so once instead of leaving silence.
+    final watchdog = Timer(const Duration(seconds: 12), () {
+      if (mounted && run == _runId) {
+        AudioBus.instance.say('Still working. Please wait.');
+      }
+    });
+
     try {
-      final frames = await _camera.burst(shots: 10, keep: 3);
+      final frames = await _camera.burst(
+        shots: 10,
+        keep: 3,
+        onProgress: (taken) {
+          if (mounted && run == _runId) {
+            setState(() => _taken = taken);
+          }
+        },
+        isCancelled: () => run != _runId,
+      );
       if (!mounted || run != _runId) return;
 
       if (frames.isEmpty) {
@@ -101,10 +125,16 @@ class _ReadScreenState extends State<ReadScreen> with WidgetsBindingObserver {
         return;
       }
 
-      final text = await OcrService.instance.readText(frames.first.file.path);
+      final ocrWatch = Stopwatch()..start();
+      final text = await OcrService.instance.readFrame(frames.first);
       if (!mounted || run != _runId) return;
 
       final words = speakable(text);
+
+      debugPrint(
+        'read: ocr ${ocrWatch.elapsedMilliseconds}ms, '
+        '${words.length} characters',
+      );
 
       if (words.isEmpty) {
         AudioBus.instance.say(
@@ -118,6 +148,7 @@ class _ReadScreenState extends State<ReadScreen> with WidgetsBindingObserver {
       setState(() => _lastText = words);
       AudioBus.instance.say(words);
     } finally {
+      watchdog.cancel();
       if (mounted && run == _runId) {
         setState(() => _busy = false);
       }
@@ -140,6 +171,15 @@ class _ReadScreenState extends State<ReadScreen> with WidgetsBindingObserver {
           child: Column(
             children: [
               Expanded(child: _buildPreviewArea()),
+              if (_busy) ...[
+                const SizedBox(height: 6),
+                Text(
+                  _taken == 0
+                      ? 'Starting camera'
+                      : '$_taken of 10 photos',
+                  style: const TextStyle(fontSize: 14),
+                ),
+              ],
               if (_lastText.isNotEmpty) _buildRecognisedText(),
               const SizedBox(height: 8),
               BigButton(

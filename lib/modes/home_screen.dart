@@ -39,7 +39,7 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       body: SafeArea(
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
           children: [
             BigButton(
               label: 'Read',
@@ -71,7 +71,7 @@ class _HomeScreenState extends State<HomeScreen> {
               semanticHint: 'Identifies a bank note',
               onPressed: () => _open(const CurrencyScreen()),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 4),
             TextButton(
               onPressed: () => _open(const SettingsScreen()),
               child: const Text('Settings', style: TextStyle(fontSize: 18)),

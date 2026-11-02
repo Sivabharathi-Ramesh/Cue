@@ -1,7 +1,7 @@
 name: cue
 description: "Cue - a phone-only reading and recognition assistant for blind and low-vision users."
 publish_to: 'none'
-version: 1.0.0+1
+version: 1.0.1+2
 
 # Pinned on purpose.
 #

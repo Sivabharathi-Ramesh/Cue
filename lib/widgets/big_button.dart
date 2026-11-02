@@ -21,7 +21,7 @@ class BigButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
+      padding: const EdgeInsets.symmetric(vertical: 5),
       child: Semantics(
         button: true,
         label: label,
@@ -29,7 +29,10 @@ class BigButton extends StatelessWidget {
         excludeSemantics: true,
         child: SizedBox(
           width: double.infinity,
-          height: 96,
+          // 84 dp, not 96: five of these plus Settings have to fit on a
+          // 640 dp-tall phone without scrolling. Still far above the 48 dp
+          // minimum touch target.
+          height: 84,
           child: ElevatedButton(
             onPressed: onPressed,
             style: ElevatedButton.styleFrom(
