@@ -1,0 +1,42 @@
+name: cue
+description: "Cue - a phone-only reading and recognition assistant for blind and low-vision users."
+publish_to: 'none'
+version: 1.0.0+1
+
+# Pinned on purpose.
+#
+# Every dependency below uses an exact version, not a range (^1.2.3). That
+# means `flutter pub get` always installs the version that was tested here.
+# The project cannot drift on its own.
+#
+# Rule for this week: do not run `flutter pub upgrade` before the review.
+environment:
+  sdk: ^3.13.7
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # Speech
+  flutter_tts: 4.2.5
+
+  # Camera and on-device vision
+  camera: 0.12.2
+  google_mlkit_text_recognition: 0.17.1
+  google_mlkit_image_labeling: 0.16.1
+
+  # Platform plumbing
+  permission_handler: 12.0.1   # 13.x needs compileSdk 37 - do not upgrade
+  path_provider: 2.1.6
+  share_plus: 13.3.1
+  sensors_plus: 7.1.1
+
+  cupertino_icons: 1.0.9
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: 6.0.0
+
+flutter:
+  uses-material-design: true
