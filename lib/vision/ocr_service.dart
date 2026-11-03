@@ -1,9 +1,21 @@
+import 'dart:async';
 import 'dart:ui' show Size;
 
 import 'package:flutter/foundation.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 
 import 'burst.dart';
+
+/// One live-camera OCR result, kept independent of the ML Kit result type so
+/// the pipeline can hold it without importing plugin classes everywhere.
+class OcrRead {
+  const OcrRead({required this.text, required this.blocks});
+
+  final String text;
+  final List<TextBlock> blocks;
+
+  bool get isEmpty => text.trim().isEmpty;
+}
 
 /// Turns a photo of text into words.
 ///
@@ -16,75 +28,135 @@ class OcrService {
 
   TextRecognizer? _latin;
 
+  /// ML Kit holds one native recogniser. Warm-up, the Read screen and the
+  /// live pipeline must not call it at the same time, so every operation is
+  /// queued behind the previous one.
+  Future<void> _tail = Future<void>.value();
+
+  TextRecognizer get _recognizer =>
+      _latin ??= TextRecognizer(script: TextRecognitionScript.latin);
+
+  Future<T> _serialise<T>(Future<T> Function() action) {
+    final completer = Completer<T>();
+    _tail = _tail.then((_) async {
+      try {
+        completer.complete(await action());
+      } catch (error, stack) {
+        completer.completeError(error, stack);
+      }
+    });
+    return completer.future;
+  }
+
   /// Loads the recognition model before the user needs it.
   ///
   /// The first call into ML Kit can take several seconds while the model is
-  /// loaded. Doing it once when Read opens hides that behind aiming the
-  /// camera, instead of making the first capture feel frozen.
-  Future<void> warmUp() async {
-    final recognizer =
-        _latin ??= TextRecognizer(script: TextRecognitionScript.latin);
+  /// loaded. Doing it once when a camera screen opens hides that behind
+  /// aiming the camera, instead of making the first reading feel frozen.
+  Future<void> warmUp() {
+    return _serialise(() async {
+      final recognizer = _recognizer;
 
-    final watch = Stopwatch()..start();
-    try {
-      // A tiny blank frame is enough to force the model to load.
-      const width = 64;
-      const height = 64;
-      final grey = Uint8List(width * height * 3 ~/ 2)
-        ..fillRange(0, width * height, 0x80);
+      final watch = Stopwatch()..start();
+      try {
+        // A tiny blank frame is enough to force the model to load.
+        const width = 64;
+        const height = 64;
+        final grey = Uint8List(width * height * 3 ~/ 2)
+          ..fillRange(0, width * height, 0x80);
 
-      await recognizer.processImage(
-        InputImage.fromBytes(
-          bytes: grey,
+        await recognizer.processImage(
+          InputImage.fromBytes(
+            bytes: grey,
+            metadata: InputImageMetadata(
+              size: const Size(64, 64),
+              rotation: InputImageRotation.rotation0deg,
+              format: InputImageFormat.nv21,
+              bytesPerRow: width,
+            ),
+          ),
+        );
+      } catch (_) {
+        // Warming up is an optimisation. If it fails, the real call still
+        // runs.
+      }
+      debugPrint('ocr: warmup ${watch.elapsedMilliseconds}ms');
+    });
+  }
+
+  /// Reads text from a still image on disk, or a raw burst frame.
+  /// Kept for the original Read screen.
+  Future<String> readFrame(BurstFrame frame) {
+    return _serialise(() async {
+      final recognizer = _recognizer;
+
+      final InputImage input;
+      final nv21 = frame.nv21;
+
+      if (nv21 != null) {
+        input = InputImage.fromBytes(
+          bytes: nv21,
           metadata: InputImageMetadata(
-            size: const Size(64, 64),
-            rotation: InputImageRotation.rotation0deg,
+            size: Size(frame.width.toDouble(), frame.height.toDouble()),
+            rotation: _rotation(frame.rotation),
+            format: InputImageFormat.nv21,
+            bytesPerRow: frame.width,
+          ),
+        );
+      } else if (frame.path != null) {
+        input = InputImage.fromFilePath(frame.path!);
+      } else {
+        return '';
+      }
+
+      try {
+        final result = await recognizer.processImage(input);
+        return result.text;
+      } catch (_) {
+        // A single bad frame must not kill the screen. The caller speaks
+        // "I could not read any text" instead.
+        return '';
+      }
+    });
+  }
+
+  /// Reads text directly from a live NV21 camera frame, without touching disk.
+  ///
+  /// [rotation] is the clockwise rotation needed to make the image upright,
+  /// in degrees (0, 90, 180 or 270). ML Kit applies it before recognition, so
+  /// the returned block boxes are already in upright coordinates.
+  Future<OcrRead> readLiveFrame({
+    required Uint8List nv21,
+    required int width,
+    required int height,
+    required int rotation,
+  }) {
+    return _serialise(() async {
+      if (nv21.isEmpty || width <= 0 || height <= 0) {
+        return const OcrRead(text: '', blocks: <TextBlock>[]);
+      }
+
+      try {
+        final input = InputImage.fromBytes(
+          bytes: nv21,
+          metadata: InputImageMetadata(
+            size: Size(width.toDouble(), height.toDouble()),
+            rotation: _rotation(rotation),
             format: InputImageFormat.nv21,
             bytesPerRow: width,
           ),
-        ),
-      );
-    } catch (_) {
-      // Warming up is an optimisation. If it fails, the real call still runs.
-    }
-    debugPrint('ocr: warmup ${watch.elapsedMilliseconds}ms');
-  }
+        );
 
-  /// Returns the text found in [frame], or an empty string.
-  Future<String> readFrame(BurstFrame frame) async {
-    final recognizer =
-        _latin ??= TextRecognizer(script: TextRecognitionScript.latin);
-
-    final InputImage input;
-    final nv21 = frame.nv21;
-
-    if (nv21 != null) {
-      input = InputImage.fromBytes(
-        bytes: nv21,
-        metadata: InputImageMetadata(
-          size: Size(frame.width.toDouble(), frame.height.toDouble()),
-          rotation: _rotation(frame.rotation),
-          format: InputImageFormat.nv21,
-          bytesPerRow: frame.width,
-        ),
-      );
-    } else if (frame.path != null) {
-      input = InputImage.fromFilePath(frame.path!);
-    } else {
-      return '';
-    }
-
-    try {
-      final result = await recognizer.processImage(input);
-      return result.text;
-    } catch (_) {
-      // A single bad frame must not kill the screen. The caller speaks
-      // "I could not read any text" instead.
-      return '';
-    }
+        final result = await _recognizer.processImage(input);
+        return OcrRead(text: result.text, blocks: result.blocks);
+      } catch (_) {
+        return const OcrRead(text: '', blocks: <TextBlock>[]);
+      }
+    });
   }
 
   Future<void> dispose() async {
+    await _tail;
     await _latin?.close();
     _latin = null;
   }

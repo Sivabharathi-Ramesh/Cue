@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 
-import 'modes/home_screen.dart';
+import 'live/live_screen.dart';
 
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
   runApp(const CueApp());
 }
 
@@ -14,12 +15,16 @@ class CueApp extends StatelessWidget {
     return MaterialApp(
       title: 'Cue',
       debugShowCheckedModeBanner: false,
+      themeMode: ThemeMode.dark,
       theme: ThemeData(
         useMaterial3: true,
+        brightness: Brightness.dark,
         colorSchemeSeed: const Color(0xFF1A237E),
-        scaffoldBackgroundColor: const Color(0xFFF7F8FC),
+        scaffoldBackgroundColor: Colors.black,
       ),
-      home: const HomeScreen(),
+      // FR-01: straight into the live camera. There is no home screen and no
+      // mode menu.
+      home: const LiveScreen(),
     );
   }
 }

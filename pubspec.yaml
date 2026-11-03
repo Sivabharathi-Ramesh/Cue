@@ -30,6 +30,7 @@ dependencies:
   path_provider: 2.1.6
   share_plus: 13.3.1
   sensors_plus: 7.1.1
+  vibration: 3.2.1             # FR-08 haptics; VIBRATE is already in the manifest
 
   cupertino_icons: 1.0.9
   image: 4.12.0
