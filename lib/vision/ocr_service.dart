@@ -1,5 +1,6 @@
 import 'dart:ui' show Size;
 
+import 'package:flutter/foundation.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 
 import 'burst.dart';
@@ -14,6 +15,40 @@ class OcrService {
   static final OcrService instance = OcrService._();
 
   TextRecognizer? _latin;
+
+  /// Loads the recognition model before the user needs it.
+  ///
+  /// The first call into ML Kit can take several seconds while the model is
+  /// loaded. Doing it once when Read opens hides that behind aiming the
+  /// camera, instead of making the first capture feel frozen.
+  Future<void> warmUp() async {
+    final recognizer =
+        _latin ??= TextRecognizer(script: TextRecognitionScript.latin);
+
+    final watch = Stopwatch()..start();
+    try {
+      // A tiny blank frame is enough to force the model to load.
+      const width = 64;
+      const height = 64;
+      final grey = Uint8List(width * height * 3 ~/ 2)
+        ..fillRange(0, width * height, 0x80);
+
+      await recognizer.processImage(
+        InputImage.fromBytes(
+          bytes: grey,
+          metadata: InputImageMetadata(
+            size: const Size(64, 64),
+            rotation: InputImageRotation.rotation0deg,
+            format: InputImageFormat.nv21,
+            bytesPerRow: width,
+          ),
+        ),
+      );
+    } catch (_) {
+      // Warming up is an optimisation. If it fails, the real call still runs.
+    }
+    debugPrint('ocr: warmup ${watch.elapsedMilliseconds}ms');
+  }
 
   /// Returns the text found in [frame], or an empty string.
   Future<String> readFrame(BurstFrame frame) async {

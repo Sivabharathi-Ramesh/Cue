@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../core/audio_bus.dart';
 import '../vision/camera_service.dart';
@@ -43,12 +44,19 @@ class _ReadScreenState extends State<ReadScreen> with WidgetsBindingObserver {
       'Read mode. Point the phone at the page, then press Capture.',
     );
     _startCamera();
+
+    // Load the OCR model now, while the user is aiming, so the first capture
+    // does not pay a multi-second model start afterwards.
+    unawaited(OcrService.instance.warmUp());
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _camera.dispose();
+    // The OCR model is deliberately left loaded for the life of the app: it
+    // costs a few megabytes, and closing it would make the next visit to Read
+    // pay the multi-second model start again.
     super.dispose();
   }
 
@@ -84,8 +92,23 @@ class _ReadScreenState extends State<ReadScreen> with WidgetsBindingObserver {
     }
   }
 
+  /// Whether the user has toggled the torch on for low-light reading.
+  ///
+  /// A blind user cannot see screen brightness — a manual toggle they can
+  /// find by touch is safer and more predictable than an auto-detect.
+  bool _torchOn = false;
+
+  void _toggleTorch() {
+    setState(() => _torchOn = !_torchOn);
+    AudioBus.instance.say(_torchOn ? 'Torch on.' : 'Torch off.');
+    HapticFeedback.selectionClick();
+  }
+
   Future<void> _capture() async {
     if (_busy || !_ready) return;
+
+    // FIX 1 – Haptic confirmation so the user knows the button was pressed.
+    HapticFeedback.heavyImpact();
 
     final run = ++_runId;
     setState(() {
@@ -98,7 +121,7 @@ class _ReadScreenState extends State<ReadScreen> with WidgetsBindingObserver {
 
     // A blind user has no way to tell "working" from "frozen". If the burst is
     // slower than expected, say so once instead of leaving silence.
-    final watchdog = Timer(const Duration(seconds: 12), () {
+    final watchdog = Timer(const Duration(seconds: 8), () {
       if (mounted && run == _runId) {
         AudioBus.instance.say('Still working. Please wait.');
       }
@@ -108,6 +131,8 @@ class _ReadScreenState extends State<ReadScreen> with WidgetsBindingObserver {
       final frames = await _camera.burst(
         shots: 10,
         keep: 3,
+        // FIX 3 – Pass torch state set by the user via the AppBar toggle.
+        torch: _torchOn,
         onProgress: (taken) {
           if (mounted && run == _runId) {
             setState(() => _taken = taken);
@@ -125,11 +150,23 @@ class _ReadScreenState extends State<ReadScreen> with WidgetsBindingObserver {
         return;
       }
 
+      // FIX 2 – Try all kept frames, not just the sharpest one.
+      // If the top frame has no readable text (glare, partial cover, etc.)
+      // the next-sharpest frame often succeeds.
       final ocrWatch = Stopwatch()..start();
-      final text = await OcrService.instance.readFrame(frames.first);
-      if (!mounted || run != _runId) return;
 
-      final words = speakable(text);
+      // Confirm out loud that the photos were taken, so the wait for OCR is
+      // not silence from a phone that might have frozen.
+      AudioBus.instance.say('Got it. Reading now.');
+
+      String words = '';
+      for (final frame in frames) {
+        if (run != _runId) return; // user pressed Stop mid-loop
+        final raw = await OcrService.instance.readFrame(frame);
+        words = speakable(raw);
+        if (words.isNotEmpty) break; // found readable text — stop trying
+      }
+      if (!mounted || run != _runId) return;
 
       debugPrint(
         'read: ocr ${ocrWatch.elapsedMilliseconds}ms, '
@@ -137,6 +174,11 @@ class _ReadScreenState extends State<ReadScreen> with WidgetsBindingObserver {
       );
 
       if (words.isEmpty) {
+        // Second haptic — a short double-tap pattern signals failure.
+        HapticFeedback.lightImpact();
+        await Future.delayed(const Duration(milliseconds: 120));
+        HapticFeedback.lightImpact();
+
         AudioBus.instance.say(
           'I could not read any text. Move closer, hold still, and make sure '
           'the page is lit.',
@@ -144,6 +186,9 @@ class _ReadScreenState extends State<ReadScreen> with WidgetsBindingObserver {
         );
         return;
       }
+
+      // Long single vibration = success.
+      HapticFeedback.mediumImpact();
 
       setState(() => _lastText = words);
       AudioBus.instance.say(words);
@@ -164,7 +209,27 @@ class _ReadScreenState extends State<ReadScreen> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Read')),
+      appBar: AppBar(
+        title: const Text('Read'),
+        actions: [
+          // Torch toggle — labelled for TalkBack so the blind user hears
+          // "Torch off, button" or "Torch on, button".
+          Semantics(
+            button: true,
+            label: _torchOn ? 'Torch on' : 'Torch off',
+            hint: 'Double tap to toggle the flash for dark rooms',
+            excludeSemantics: true,
+            child: IconButton(
+              icon: Icon(
+                _torchOn ? Icons.flashlight_on : Icons.flashlight_off,
+                color: _torchOn ? Colors.amber : null,
+              ),
+              tooltip: _torchOn ? 'Torch on' : 'Torch off',
+              onPressed: _ready ? _toggleTorch : null,
+            ),
+          ),
+        ],
+      ),
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(16),
@@ -176,6 +241,8 @@ class _ReadScreenState extends State<ReadScreen> with WidgetsBindingObserver {
                 Text(
                   _taken == 0
                       ? 'Starting camera'
+                      : _taken >= 10
+                      ? 'Reading the page'
                       : '$_taken of 10 photos',
                   style: const TextStyle(fontSize: 14),
                 ),
