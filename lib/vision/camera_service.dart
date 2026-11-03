@@ -15,6 +15,13 @@ class CameraService {
   /// The burst currently holding the camera stream, if any.
   Future<List<BurstFrame>>? _burstInFlight;
 
+  /// An open() already in progress, so a lifecycle bounce (the permission
+  /// dialog, the notification shade) cannot start a second camera.
+  Future<String?>? _opening;
+
+  /// A dispose() still running; open() waits for it.
+  Future<void>? _disposing;
+
   CameraController? get controller => _controller;
 
   bool get isReady => _controller?.value.isInitialized ?? false;
@@ -25,6 +32,28 @@ class CameraService {
   /// The message is written to be spoken, not read.
   Future<String?> open() async {
     if (isReady) return null;
+
+    final alreadyOpening = _opening;
+    if (alreadyOpening != null) return alreadyOpening;
+
+    final opening = _open();
+    _opening = opening;
+    try {
+      return await opening;
+    } finally {
+      if (identical(_opening, opening)) _opening = null;
+    }
+  }
+
+  Future<String?> _open() async {
+    final disposing = _disposing;
+    if (disposing != null) {
+      try {
+        await disposing;
+      } catch (_) {
+        // The old camera is on its way out. Carry on and open a fresh one.
+      }
+    }
 
     final status = await Permission.camera.request();
     if (!status.isGranted) {
@@ -169,6 +198,25 @@ class CameraService {
   Future<void> dispose() async {
     final camera = _controller;
     _controller = null;
-    await camera?.dispose();
+
+    if (camera == null) {
+      final pending = _disposing;
+      if (pending != null) {
+        try {
+          await pending;
+        } catch (_) {
+          // Already gone.
+        }
+      }
+      return;
+    }
+
+    final disposing = camera.dispose();
+    _disposing = disposing;
+    try {
+      await disposing;
+    } finally {
+      if (identical(_disposing, disposing)) _disposing = null;
+    }
   }
 }

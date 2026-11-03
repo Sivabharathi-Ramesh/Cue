@@ -62,10 +62,13 @@ class _ReadScreenState extends State<ReadScreen> with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.inactive ||
-        state == AppLifecycleState.paused) {
+    if (state == AppLifecycleState.paused) {
       // Android takes the camera away from a backgrounded app. Release it
       // now instead of holding a dead handle.
+      //
+      // Only paused, not inactive: inactive also fires for the permission
+      // dialog and the notification shade, where the camera is still ours.
+      // Releasing it there races the dialog and can leave two cameras opening.
       _camera.dispose();
       if (mounted) setState(() => _ready = false);
     } else if (state == AppLifecycleState.resumed && !_ready) {
