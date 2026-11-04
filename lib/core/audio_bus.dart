@@ -22,15 +22,42 @@ class AudioBus {
   /// polling or guessing.
   final ValueNotifier<bool> speaking = ValueNotifier<bool>(false);
 
+  /// True only while a *reading* is being spoken.
+  ///
+  /// The screen shows "Reading" from this, not from [speaking]: "Cue is
+  /// looking" and an aiming cue are speech too, but they are not readings, and
+  /// a sighted helper must not be told the opposite of what is happening.
+  final ValueNotifier<bool> reading = ValueNotifier<bool>(false);
+
   bool _speaking = false;
   SpeechPriority _current = SpeechPriority.info;
   int _utterance = 0;
   String? _lastResult;
 
-  /// The last result spoken as a reading, available to the repeat gesture.
+  /// What the user actually heard as a reading: an uncertain result includes
+  /// the doubt preamble so repeat repeats the truth, not just the guess.
+  String? _lastSpoken;
+
+  /// The last result, in its raw recognised form, available to callers that
+  /// compare text for deduplication.
   String? get lastResult => _lastResult;
 
   bool get isSpeaking => _speaking;
+
+  /// The words the user will hear for a reading at this confidence level.
+  ///
+  /// The doubt must be the first thing said: a blind user cannot scan the
+  /// face of the reader for hesitation, and a late "maybe" does not undo a
+  /// wrong sentence spoken first.
+  static String labelReading(
+    String text, {
+    bool uncertain = false,
+  }) {
+    final clean = text.trim();
+    return uncertain
+        ? 'I am not sure. I think it says: $clean'
+        : clean;
+  }
 
   Future<void> say(
     String text, {
@@ -52,13 +79,19 @@ class AudioBus {
   ///
   /// [force] is used by the manual read gesture: the user asked for this page
   /// again, so deduplication must not swallow it.
+  ///
+  /// [uncertain] states the recogniser's doubt first, before any of the
+  /// proposed words. The answer is still useful, but never presented as
+  /// definite.
   bool speakResult(
     String text, {
     bool force = false,
+    bool uncertain = false,
     SpeechPriority priority = SpeechPriority.answer,
   }) {
     final clean = text.trim();
     if (clean.isEmpty) return false;
+    final spoken = labelReading(clean, uncertain: uncertain);
 
     if (!force) {
       if (_lastResult != null && newTokenRatio(_lastResult!, clean) < 0.35) {
@@ -70,13 +103,14 @@ class AudioBus {
     }
 
     _lastResult = clean;
-    unawaited(_speak(clean, priority));
+    _lastSpoken = spoken;
+    unawaited(_speak(spoken, priority));
     return true;
   }
 
   /// Re-speaks the last result, even if it has not changed.
   Future<void> repeatLast() async {
-    final last = _lastResult;
+    final last = _lastSpoken;
     if (last == null) {
       await say('Nothing to repeat yet.', priority: SpeechPriority.info);
       return;
@@ -91,6 +125,7 @@ class AudioBus {
   /// being swallowed by the "already spoken" rule.
   void forgetLastResult() {
     _lastResult = null;
+    _lastSpoken = null;
   }
 
   Future<void> _speak(String text, SpeechPriority priority) async {
@@ -98,6 +133,7 @@ class AudioBus {
     _current = priority;
     _speaking = true;
     speaking.value = true;
+    reading.value = priority == SpeechPriority.answer;
 
     try {
       await TtsService.instance.speak(text);
@@ -111,6 +147,7 @@ class AudioBus {
         _speaking = false;
         _current = SpeechPriority.info;
         speaking.value = false;
+        reading.value = false;
       }
     }
   }
@@ -120,6 +157,7 @@ class AudioBus {
     _speaking = false;
     _current = SpeechPriority.info;
     speaking.value = false;
+    reading.value = false;
     try {
       await TtsService.instance.stop();
     } catch (_) {

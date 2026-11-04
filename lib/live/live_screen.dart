@@ -3,14 +3,18 @@ import 'dart:async';
 import 'package:camera/camera.dart';
 // Flutter's Material library also defines a `Feedback` class (the haptic
 // helper). Cue's own audio/haptic layer is the one this screen means.
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart' hide Feedback;
 import 'package:flutter/semantics.dart';
 
 import '../core/audio_bus.dart';
 import '../core/feedback.dart';
+import '../core/keep_awake.dart';
+import '../core/tts_service.dart';
 import '../vision/frame_source.dart';
 import '../vision/ocr_service.dart';
 import 'frame_pipeline.dart';
+import 'scene_router.dart';
 
 /// The five states from section 8 of the specification.
 enum LivePhase { starting, searching, paused, error }
@@ -35,6 +39,17 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
   bool _starting = false;
   int _startToken = 0;
   bool _pausedByUser = false;
+
+  /// Whether the preview and the status panel are currently visible.
+  ///
+  /// The screen is for sighted helpers, not for the user. It shows itself for
+  /// five seconds when a session starts and whenever a new reading lands, then
+  /// fades to black: the camera keeps reading in the dark, which is better for
+  /// privacy and for battery.
+  bool _previewOn = true;
+  Timer? _previewTimer;
+
+  static const Duration _previewWindow = Duration(seconds: 5);
 
   @override
   void initState() {
@@ -63,8 +78,10 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
   @override
   void dispose() {
     _searchTick?.cancel();
+    _previewTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     _startToken++;
+    unawaited(KeepAwake.set(false));
     unawaited(AudioBus.instance.stop());
     unawaited(_source.dispose());
     super.dispose();
@@ -89,8 +106,7 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
 
     // Coming back from a pause is a deliberate act, so the page in view should
     // be read again even if it was already spoken before the pause.
-    final restarting =
-        _phase == LivePhase.paused || _phase == LivePhase.error;
+    final restarting = _phase == LivePhase.paused || _phase == LivePhase.error;
 
     _starting = true;
     final token = ++_startToken;
@@ -132,8 +148,33 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
       }
     });
 
+    // The display must not time out mid-page: a locked screen backgrounds the
+    // app and the camera stops without a word.
+    unawaited(KeepAwake.set(true));
+    _showPreview();
     unawaited(Feedback.instance.ready());
     unawaited(_announceReady(token));
+  }
+
+  /// Shows the preview and the status for a few seconds, then lets them fade.
+  ///
+  /// Called on start, on a new reading, on a manual read, and from the actions
+  /// menu. Nothing depends on it: the pipeline keeps running when the screen is
+  /// black.
+  void _showPreview() {
+    _previewTimer?.cancel();
+    if (!mounted) return;
+    if (!_previewOn) setState(() => _previewOn = true);
+    _previewTimer = Timer(_previewWindow, () {
+      if (!mounted) return;
+      // Do not go dark in the middle of a reading: a sighted helper following
+      // the caption gets the whole sentence, then the screen fades.
+      if (AudioBus.instance.reading.value) {
+        _showPreview();
+        return;
+      }
+      setState(() => _previewOn = false);
+    });
   }
 
   Future<void> _announceReady(int token) async {
@@ -148,7 +189,10 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
   Future<void> _pause({bool announce = true}) async {
     _startToken++;
     _starting = false;
+    _previewTimer?.cancel();
+    _previewOn = false;
 
+    await KeepAwake.set(false);
     await AudioBus.instance.stop();
     await _source.stop();
     _pipeline.reset();
@@ -181,12 +225,11 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
 
     if (_phase == LivePhase.searching) {
       _pipeline.requestManualRead();
-      if (!AudioBus.instance.speaking.value) {
+      _showPreview();
+      if (_pipeline.interpretation == Interpretation.text &&
+          !AudioBus.instance.speaking.value) {
         unawaited(
-          AudioBus.instance.say(
-            'Reading now.',
-            priority: SpeechPriority.info,
-          ),
+          AudioBus.instance.say('Reading now.', priority: SpeechPriority.info),
         );
       }
     }
@@ -206,20 +249,82 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
     unawaited(Feedback.instance.gesture());
     unawaited(
       AudioBus.instance.say(
-        'Controls. Double tap to read now. Open the actions menu for repeat, '
-        'stop, pause and help.',
+        'Controls. Double tap to read now. Swipe left or right to change '
+        'interpretation. Open the actions menu for repeat, stop, pause, help, '
+        'show preview, and slower or faster speech.',
         priority: SpeechPriority.navigation,
       ),
     );
   }
 
-  void _cycleInterpretation() {
+  /// Steps the voice speed and confirms the change by speaking at the new
+  /// rate. The confirmation is the sample: the user hears the pace rather
+  /// than a number they would have to translate.
+  Future<void> _changeSpeed({required bool faster}) async {
     unawaited(Feedback.instance.gesture());
-    unawaited(
-      AudioBus.instance.say(
-        'Text reading only in this build.',
-        priority: SpeechPriority.info,
-      ),
+
+    // A rate change only affects the next sentence. Stop whatever is being
+    // said so the confirmation is the first thing heard at the new pace —
+    // otherwise the user changes speed and the old sentence carries on, which
+    // sounds as if the action did nothing.
+    await AudioBus.instance.stop();
+
+    final service = TtsService.instance;
+    final changed = faster ? await service.faster() : await service.slower();
+
+    if (!changed) {
+      await AudioBus.instance.say(
+        faster ? 'This is the fastest speed.' : 'This is the slowest speed.',
+        priority: SpeechPriority.navigation,
+      );
+      return;
+    }
+
+    await AudioBus.instance.say(
+      faster
+          ? 'Faster. This is the new reading speed.'
+          : 'Slower. This is the new reading speed.',
+      priority: SpeechPriority.navigation,
+    );
+  }
+
+  void _slowerSpeech() {
+    unawaited(_changeSpeed(faster: false));
+  }
+
+  void _fasterSpeech() {
+    unawaited(_changeSpeed(faster: true));
+  }
+
+  void _nextInterpretation() {
+    unawaited(_changeInterpretation(forward: true));
+  }
+
+  /// Changes the handler with a sideways swipe.
+  ///
+  /// The four choices come from section 7 of the specification. Only text has
+  /// an implementation, and the app says so rather than pretending a detector
+  /// exists. The announcement is a control, so it stops the old reading first
+  /// and is then heard at navigation priority.
+  Future<void> _changeInterpretation({required bool forward}) async {
+    unawaited(Feedback.instance.gesture());
+    await AudioBus.instance.stop();
+
+    final current = _pipeline.interpretation;
+    final next = forward ? current.next : current.previous;
+    _pipeline.setInterpretation(next);
+    AudioBus.instance.forgetLastResult();
+    _showPreview();
+
+    if (kDebugMode) {
+      debugPrint('live: interpretation ${next.name}');
+    }
+
+    await AudioBus.instance.say(
+      next == Interpretation.text
+          ? 'Text mode. Point at printed text.'
+          : '${next.label} mode is not built yet. Swipe to change mode.',
+      priority: SpeechPriority.navigation,
     );
   }
 
@@ -242,9 +347,17 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
     }
   }
 
+  void _onHorizontalDragEnd(DragEndDetails details) {
+    final velocity = details.primaryVelocity ?? 0;
+    if (velocity == 0) return;
+    unawaited(_changeInterpretation(forward: velocity > 0));
+  }
+
   void _onResult(String text) {
     if (!mounted) return;
     setState(() => _lastResult = text);
+    // A sighted helper looking at the phone sees what was just read.
+    _showPreview();
   }
 
   String get _semanticsLabel {
@@ -276,7 +389,8 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     final controller = _source.controller;
-    final showPreview = controller != null &&
+    final showPreview =
+        controller != null &&
         controller.value.isInitialized &&
         _phase == LivePhase.searching;
 
@@ -285,8 +399,10 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
       body: Semantics(
         container: true,
         label: _semanticsLabel,
-        hint: 'Double tap to read now. Use the actions menu for repeat, stop, '
-            'pause and help.',
+        hint:
+            'Double tap to read now. Swipe sideways to change '
+            'interpretation. Use the actions menu for repeat, stop, pause, '
+            'help and speech speed.',
         onTap: _activate,
         customSemanticsActions: <CustomSemanticsAction, VoidCallback>{
           const CustomSemanticsAction(label: 'Read now'): _activate,
@@ -294,7 +410,11 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
           const CustomSemanticsAction(label: 'Stop speaking'): _stopSpeech,
           const CustomSemanticsAction(label: 'Pause or resume'): _togglePause,
           const CustomSemanticsAction(label: 'Help'): _help,
-          const CustomSemanticsAction(label: 'Text only'): _cycleInterpretation,
+          const CustomSemanticsAction(label: 'Show preview'): _showPreview,
+          const CustomSemanticsAction(label: 'Slower speech'): _slowerSpeech,
+          const CustomSemanticsAction(label: 'Faster speech'): _fasterSpeech,
+          const CustomSemanticsAction(label: 'Change interpretation'):
+              _nextInterpretation,
         },
         excludeSemantics: true,
         child: GestureDetector(
@@ -302,17 +422,26 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
           onDoubleTap: _activate,
           onLongPress: _help,
           onVerticalDragEnd: _onVerticalDragEnd,
-          onHorizontalDragEnd: (_) => _cycleInterpretation(),
+          onHorizontalDragEnd: _onHorizontalDragEnd,
           child: Stack(
             fit: StackFit.expand,
             children: <Widget>[
-              if (showPreview) _preview(controller),
-              const IgnorePointer(
-                child: ColoredBox(color: Color(0x66000000)),
-              ),
+              if (showPreview)
+                AnimatedOpacity(
+                  opacity: _previewOn ? 1 : 0,
+                  duration: const Duration(milliseconds: 900),
+                  curve: Curves.easeOut,
+                  child: _preview(controller),
+                ),
+              const IgnorePointer(child: ColoredBox(color: Color(0x66000000))),
               Align(
                 alignment: Alignment.bottomCenter,
-                child: _statusPanel(),
+                child: AnimatedOpacity(
+                  opacity: _previewOn ? 1 : 0,
+                  duration: const Duration(milliseconds: 900),
+                  curve: Curves.easeOut,
+                  child: _statusPanel(),
+                ),
               ),
             ],
           ),
@@ -326,7 +455,8 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
     if (size == null) return const SizedBox.shrink();
 
     // The preview is a courtesy for sighted helpers. It is dimmed and never
-    // required: every decision in the app is spoken or felt.
+    // required: every decision in the app is spoken or felt. It fades out
+    // after a few seconds; the camera keeps running behind the black screen.
     return Opacity(
       opacity: 0.45,
       child: ClipRect(
@@ -358,10 +488,10 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
             ValueListenableBuilder<bool>(
-              valueListenable: AudioBus.instance.speaking,
-              builder: (context, speaking, _) {
+              valueListenable: AudioBus.instance.reading,
+              builder: (context, reading, _) {
                 return Text(
-                  speaking ? 'Reading' : _phaseLabel,
+                  reading ? 'Reading' : _phaseLabel,
                   textAlign: TextAlign.center,
                   style: const TextStyle(
                     color: Colors.white,

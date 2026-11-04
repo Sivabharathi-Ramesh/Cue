@@ -9,10 +9,22 @@ import 'burst.dart';
 /// One live-camera OCR result, kept independent of the ML Kit result type so
 /// the pipeline can hold it without importing plugin classes everywhere.
 class OcrRead {
-  const OcrRead({required this.text, required this.blocks});
+  const OcrRead({
+    required this.text,
+    required this.blocks,
+    this.confidence,
+  });
 
   final String text;
   final List<TextBlock> blocks;
+
+  /// Mean recogniser confidence across the lines, 0–1, or null when the
+  /// platform does not report one (iOS).
+  ///
+  /// Weighted by line length, so one confidently-read heading cannot mask a
+  /// page of guesses. This is the number the honesty gate uses to decide
+  /// whether a reading may be spoken at all.
+  final double? confidence;
 
   bool get isEmpty => text.trim().isEmpty;
 }
@@ -148,7 +160,11 @@ class OcrService {
         );
 
         final result = await _recognizer.processImage(input);
-        return OcrRead(text: result.text, blocks: result.blocks);
+        return OcrRead(
+          text: result.text,
+          blocks: result.blocks,
+          confidence: _meanConfidence(result.blocks),
+        );
       } catch (_) {
         return const OcrRead(text: '', blocks: <TextBlock>[]);
       }
@@ -160,6 +176,30 @@ class OcrService {
     await _latin?.close();
     _latin = null;
   }
+}
+
+/// Length-weighted mean of the per-line confidences ML Kit reports.
+///
+/// Lines are used rather than elements because a line's confidence already
+/// reflects its elements, and weighting by characters keeps a single long line
+/// from being outvoted by several two-word fragments.
+double? _meanConfidence(List<TextBlock> blocks) {
+  var weighted = 0.0;
+  var weight = 0;
+
+  for (final block in blocks) {
+    for (final line in block.lines) {
+      final confidence = line.confidence;
+      if (confidence == null) continue;
+      final length = line.text.trim().length;
+      if (length == 0) continue;
+      weighted += confidence * length;
+      weight += length;
+    }
+  }
+
+  if (weight == 0) return null;
+  return weighted / weight;
 }
 
 InputImageRotation _rotation(int degrees) {

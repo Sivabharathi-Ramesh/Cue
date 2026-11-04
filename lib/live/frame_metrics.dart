@@ -26,6 +26,11 @@ class FrameMetrics {
 
   bool get isTooDark => brightness < 45;
 
+  /// Below this Laplacian variance a frame is treated as blurred.
+  static const double blurThreshold = 25;
+
+  bool get isTooBlurry => sharpness < blurThreshold;
+
   @override
   String toString() =>
       'brightness ${brightness.toStringAsFixed(1)}, '
@@ -77,13 +82,7 @@ class FrameSampler {
       rowStride,
       pixelStride,
     );
-    final thumbnail = _thumbnail(
-      bytes,
-      width,
-      height,
-      rowStride,
-      pixelStride,
-    );
+    final thumbnail = _thumbnail(bytes, width, height, rowStride, pixelStride);
     final change = _difference(_previousThumbnail, thumbnail);
     _previousThumbnail = thumbnail;
 
@@ -204,8 +203,9 @@ class FrameSampler {
           }
         }
 
-        thumbnail[ty * _thumbnailSize + tx] =
-            count == 0 ? 0 : (sum / count).round();
+        thumbnail[ty * _thumbnailSize + tx] = count == 0
+            ? 0
+            : (sum / count).round();
       }
     }
 

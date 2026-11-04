@@ -12,6 +12,8 @@ import '../vision/frame_source.dart';
 import '../vision/ocr_service.dart';
 import 'aiming_coach.dart';
 import 'frame_metrics.dart';
+import 'reading_quality.dart';
+import 'scene_router.dart';
 import 'stability_gate.dart';
 
 /// The live loop: frame in, spoken result or aiming cue out.
@@ -32,15 +34,35 @@ class FramePipeline {
   static const Duration _minFrameGap = Duration(milliseconds: 320);
   static const Duration _staleAfter = Duration(milliseconds: 1400);
 
-  /// Below this Laplacian variance a frame is treated as blurred.
-  static const double _blurThreshold = 25;
-
   /// Below this mean absolute difference the scene is treated as unchanged.
   static const double _changeThreshold = 0.004;
+
+  /// Consecutive untrusted readings before the app admits it cannot read them.
+  ///
+  /// One bad frame is normal: motion blur, a passing shadow, a page turning.
+  /// Three in a row means the marks in view are genuinely not readable, which
+  /// is the handwriting case. Saying so immediately would interrupt the user
+  /// every time the camera nudged.
+  static const int _untrustedBeforeSpeaking = 3;
+
+  /// Minimum gap between "I cannot read these marks" sentences, so pointing at
+  /// handwriting does not produce the same apology forever.
+  static const Duration _honestyCooldown = Duration(seconds: 25);
+
+  /// Consecutive frames without words before saying there is something in view
+  /// that Cue cannot identify.
+  ///
+  /// The same reasoning as [_untrustedBeforeSpeaking] applies: one wordless
+  /// frame is a shadow or a camera nudge, three is a scene.
+  static const int _notTextBeforeSpeaking = 3;
+
+  /// Minimum gap between "I see something..." sentences.
+  static const Duration _notTextCooldown = Duration(seconds: 20);
 
   final FrameSampler _sampler = FrameSampler();
   final StabilityGate _stability = StabilityGate();
   final AimingCoach _coach = AimingCoach();
+  final SceneRouter _router = const SceneRouter();
 
   DateTime _lastAttempt = DateTime.fromMillisecondsSinceEpoch(0);
   DateTime _lastOcr = DateTime.fromMillisecondsSinceEpoch(0);
@@ -49,6 +71,39 @@ class FramePipeline {
   bool _busy = false;
   bool _manualRequested = false;
   int _generation = 0;
+
+  /// How many readings in a row were refused by the honesty gate.
+  int _untrustedStreak = 0;
+
+  /// When the "I cannot read these marks" sentence was last spoken.
+  DateTime? _lastHonestyAt;
+
+  /// How many frames in a row contained no words at all.
+  int _notTextStreak = 0;
+
+  /// When "I see something, but I cannot tell what it is" was last spoken.
+  DateTime? _lastNotTextAt;
+
+  /// What the user last told Cue to look for. Text is the only built handler.
+  Interpretation _interpretation = Interpretation.text;
+
+  Interpretation get interpretation => _interpretation;
+
+  /// Switches interpretation and lets the next frame be analysed immediately.
+  ///
+  /// Called by the side-swipe gesture. The caller is responsible for telling
+  /// the user which mode was chosen; this method only changes state.
+  void setInterpretation(Interpretation value) {
+    if (value == _interpretation) return;
+    _interpretation = value;
+    _stability.reset();
+    _untrustedStreak = 0;
+    _notTextStreak = 0;
+    _lastHonestyAt = null;
+    _lastNotTextAt = null;
+    _lastAttempt = DateTime.fromMillisecondsSinceEpoch(0);
+    _lastOcr = DateTime.fromMillisecondsSinceEpoch(0);
+  }
 
   /// Entry point wired to the camera stream. Fire-and-forget on purpose: the
   /// camera must never be blocked while OCR runs.
@@ -69,6 +124,10 @@ class FramePipeline {
     _coach.reset();
     _busy = false;
     _manualRequested = false;
+    _untrustedStreak = 0;
+    _lastHonestyAt = null;
+    _notTextStreak = 0;
+    _lastNotTextAt = null;
     _lastAttempt = DateTime.fromMillisecondsSinceEpoch(0);
     _lastOcr = DateTime.fromMillisecondsSinceEpoch(0);
     _lastSpokenAt = null;
@@ -76,6 +135,17 @@ class FramePipeline {
 
   Future<void> _handle(CameraFrame frame) async {
     if (_busy) return;
+
+    // Unbuilt interpretations do not touch the camera or the recogniser. A
+    // manual read still gets an answer, because the user asked for one; a
+    // frame nobody asked about gets silence rather than a guess.
+    if (_interpretation != Interpretation.text) {
+      if (_manualRequested) {
+        _manualRequested = false;
+        _sayUnbuiltMode();
+      }
+      return;
+    }
 
     final now = DateTime.now();
     if (now.difference(_lastAttempt) < _minFrameGap) return;
@@ -90,7 +160,7 @@ class FramePipeline {
     // gate says nothing moved. Without this, a perfectly still page would
     // never be read, and a permanently soft camera would look dead.
     final stale = now.difference(_lastOcr) > _staleAfter;
-    final tooBlurry = metrics.sharpness < _blurThreshold;
+    final tooBlurry = metrics.isTooBlurry;
     final unchanged = metrics.change < _changeThreshold;
 
     if (!manual && !stale && (tooBlurry || unchanged)) {
@@ -117,53 +187,124 @@ class FramePipeline {
         height: frame.image.height,
         rotation: rotation,
       );
+      final text = speakable(read.text);
+      final quality = ReadingQuality.of(text, read.confidence);
+
       if (kDebugMode) {
         debugPrint(
           'live: ocr ${watch.elapsedMilliseconds}ms '
           '${frame.image.width}x${frame.image.height} '
-          'chars=${read.text.length}',
+          'chars=${read.text.length} '
+          'conf=${quality.confidence?.toStringAsFixed(2) ?? 'n/a'} '
+          'tier=${quality.tier.name}'
+          '${quality.reason == null ? '' : ' (${quality.reason})'}',
         );
       }
 
       // The camera was stopped, or a new session began, while OCR ran.
       if (generation != _generation) return;
 
-      final text = speakable(read.text);
-      final frameSize = rotatedSize(frame.image.width, frame.image.height, rotation);
+      final scene = _router.decide(metrics: metrics, text: text);
+      if (kDebugMode) {
+        debugPrint('live: scene $scene');
+      }
+
+      // A bright, sharp frame with no words is a scene, not a page: say so
+      // once, honestly, instead of letting the aiming coach keep asking for
+      // text that is not there. Aiming is skipped here for the same reason;
+      // darkness is classified as unclear and handled by the aiming path.
+      if (scene.kind == SceneKind.notText && text.isEmpty) {
+        _stability.reset();
+        _notTextStreak++;
+        _maybeSpeakNotText(manual: manual);
+        return;
+      }
+
+      // Any words at all mean the no-words streak is over, even if the marks
+      // turn out to be unreadable handwriting.
+      _notTextStreak = 0;
+
+      final frameSize = rotatedSize(
+        frame.image.width,
+        frame.image.height,
+        rotation,
+      );
       final layout = read.blocks.isEmpty
           ? null
           : TextLayout.fromRects(
-              read.blocks.map((block) => block.boundingBox).toList(growable: false),
+              read.blocks
+                  .map((block) => block.boundingBox)
+                  .toList(growable: false),
               frameSize,
               wordCount: _wordCount(text),
             );
 
-      if (text.isEmpty) {
-        _stability.reset();
-      } else {
-        _stability.add(text);
-      }
-
-      if (text.isNotEmpty && (manual || _stability.isStable)) {
-        final spoken = AudioBus.instance.speakResult(text, force: manual);
-        if (spoken) {
-          _lastSpokenAt = DateTime.now();
-          onResult(text);
-          unawaited(Feedback.instance.found());
-        }
-      } else if (manual) {
-        unawaited(Feedback.instance.notSure());
-        unawaited(
-          AudioBus.instance.say(
-            'I am not sure. I cannot see text. Hold steady and point at the '
-            'page.',
-            priority: SpeechPriority.alert,
-          ),
+      if (kDebugMode && layout != null) {
+        debugPrint(
+          'live: aim centerX=${layout.centerX.toStringAsFixed(2)} '
+          'coverage=${layout.coverage.toStringAsFixed(3)} '
+          'height=${layout.heightRatio.toStringAsFixed(2)} '
+          'words=${layout.wordCount} rotation=$rotation '
+          'frame=${frameSize.width.toInt()}x${frameSize.height.toInt()}',
         );
       }
 
+      // Any tier except refusal may be heard. An uncertain result is useful,
+      // but only after the app says clearly that it may be wrong.
+      final tier = quality.tier;
+      final uncertain = tier == ReadingTier.uncertain;
+      final readable = tier != ReadingTier.refused;
+
+      if (readable) {
+        _untrustedStreak = 0;
+        _stability.add(text);
+
+        if (manual || _stability.isStable) {
+          final spoken = AudioBus.instance.speakResult(
+            text,
+            force: manual,
+            uncertain: uncertain,
+          );
+          if (spoken) {
+            _lastSpokenAt = DateTime.now();
+            if (kDebugMode) {
+              debugPrint(
+                'live: speak chars=${text.length} manual=$manual tier=${tier.name}',
+              );
+            }
+            onResult(AudioBus.labelReading(text, uncertain: uncertain));
+            unawaited(
+              uncertain
+                  ? Feedback.instance.notSure()
+                  : Feedback.instance.found(),
+            );
+          }
+        }
+      } else {
+        _stability.reset();
+
+        if (text.isEmpty) {
+          _untrustedStreak = 0;
+          if (manual) {
+            unawaited(Feedback.instance.notSure());
+            unawaited(
+              AudioBus.instance.say(
+                'I am not sure. I cannot see text. Hold steady and point at '
+                'the page.',
+                priority: SpeechPriority.alert,
+              ),
+            );
+          }
+        } else {
+          // There are marks in view, but they are not words the app can
+          // honestly read. This is the handwriting case.
+          _untrustedStreak++;
+          _maybeRefuseReading(manual: manual);
+        }
+      }
+
       if (!manual) {
-        _maybeAim(metrics, layout, DateTime.now(), text);
+        _maybeAim(metrics, layout, DateTime.now(), readable ? text : '');
       }
     } catch (_) {
       // One bad frame must never take the live screen down. The next frame
@@ -175,13 +316,94 @@ class FramePipeline {
     }
   }
 
+  /// Answers a manual read in a mode whose handler has not been built.
+  ///
+  /// The swipe itself is announced by the live screen. This is for the case
+  /// where the user double-taps anyway: silence would look like a broken app.
+  void _sayUnbuiltMode() {
+    unawaited(
+      AudioBus.instance.say(
+        '${_interpretation.label} mode is not built yet. '
+        'Swipe to change mode.',
+        priority: SpeechPriority.alert,
+      ),
+    );
+  }
+
+  /// Says, honestly, that there is something in view but it is not words.
+  ///
+  /// FR-05's fallback. It waits for a few consecutive wordless frames so a
+  /// passing shadow does not trigger it, and then stays quiet for a while.
+  void _maybeSpeakNotText({required bool manual}) {
+    final now = DateTime.now();
+
+    if (!manual) {
+      if (_notTextStreak < _notTextBeforeSpeaking) return;
+      final last = _lastNotTextAt;
+      if (last != null && now.difference(last) < _notTextCooldown) return;
+    }
+
+    _lastNotTextAt = now;
+    // Treat it like speech for aiming purposes: do not chirp a framing tone
+    // over the top of the sentence the user is listening to.
+    _lastSpokenAt = now;
+
+    if (kDebugMode) {
+      debugPrint('live: not-text manual=$manual streak=$_notTextStreak');
+    }
+
+    unawaited(Feedback.instance.notSure());
+    unawaited(
+      AudioBus.instance.say(
+        'I see something, but I cannot tell what it is.',
+        priority: SpeechPriority.alert,
+      ),
+    );
+  }
+
+  /// Says, honestly, that there are marks but no readable words.
+  ///
+  /// A blind user cannot check a wrong reading, so guessing is worse than
+  /// refusing. The manual path always answers because the user asked; the
+  /// automatic path waits for a few consecutive failures and then keeps quiet
+  /// for a while.
+  void _maybeRefuseReading({required bool manual}) {
+    final now = DateTime.now();
+
+    if (!manual) {
+      if (_untrustedStreak < _untrustedBeforeSpeaking) return;
+      final last = _lastHonestyAt;
+      if (last != null && now.difference(last) < _honestyCooldown) return;
+    }
+
+    _lastHonestyAt = now;
+    // Treat it like speech for aiming purposes: do not chirp a framing tone
+    // over the top of the sentence the user is listening to.
+    _lastSpokenAt = now;
+
+    if (kDebugMode) {
+      debugPrint(
+        'live: refuse reading manual=$manual streak=$_untrustedStreak',
+      );
+    }
+
+    unawaited(Feedback.instance.notSure());
+    unawaited(
+      AudioBus.instance.say(
+        'I can see marks, but I cannot read them. Printed text works best.',
+        priority: SpeechPriority.alert,
+      ),
+    );
+  }
+
   void _maybeAim(
     FrameMetrics metrics,
     TextLayout? layout,
     DateTime now,
     String text,
   ) {
-    final recentlySpoken = _lastSpokenAt != null &&
+    final recentlySpoken =
+        _lastSpokenAt != null &&
         now.difference(_lastSpokenAt!) < const Duration(seconds: 6);
 
     final cue = _coach.evaluate(
@@ -212,6 +434,11 @@ class FramePipeline {
     }
 
     onCue?.call(cue);
+    if (kDebugMode) {
+      debugPrint(
+        'live: cue ${cue.name} centerX=${layout?.centerX.toStringAsFixed(2) ?? "n/a"}',
+      );
+    }
     unawaited(Feedback.instance.aimProblem(pitch: cue.toneHz, pan: cue.pan));
     unawaited(
       AudioBus.instance.say(cue.speech, priority: SpeechPriority.navigation),

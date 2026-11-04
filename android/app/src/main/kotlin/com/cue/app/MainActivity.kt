@@ -5,6 +5,7 @@ import android.media.AudioManager
 import android.media.AudioTrack
 import android.os.Handler
 import android.os.Looper
+import android.view.WindowManager
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -36,9 +37,32 @@ class MainActivity : FlutterActivity() {
                         val pan = call.argument<Double>("pan") ?: 0.0
                         result.success(playTone(frequency, durationMs, volume, pan))
                     }
+                    "keepAwake" -> {
+                        val on = call.argument<Boolean>("on") ?: false
+                        setKeepAwake(on)
+                        result.success(null)
+                    }
                     else -> result.notImplemented()
                 }
             }
+    }
+
+    /**
+     * Stops the display from sleeping while a reading session is live.
+     *
+     * A locked screen backgrounds the activity, and a backgrounded activity
+     * loses the camera. For a blind user holding the phone at a page, that
+     * would end the reading with no warning, so the flag stays on for as long
+     * as the live screen is in front.
+     */
+    private fun setKeepAwake(on: Boolean) {
+        runOnUiThread {
+            if (on) {
+                window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            } else {
+                window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            }
+        }
     }
 
     private fun playTone(
