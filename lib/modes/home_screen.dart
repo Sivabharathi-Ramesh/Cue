@@ -25,18 +25,13 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _open(Widget screen) {
     AudioBus.instance.stop();
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(builder: (_) => screen),
-    );
+    Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => screen));
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Cue'),
-        centerTitle: true,
-      ),
+      appBar: AppBar(title: const Text('Cue'), centerTitle: true),
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),

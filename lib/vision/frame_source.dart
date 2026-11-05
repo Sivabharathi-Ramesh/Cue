@@ -1,4 +1,5 @@
 import 'package:camera/camera.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
 
@@ -17,18 +18,26 @@ class CameraFrame {
   final CameraDescription description;
   final DeviceOrientation deviceOrientation;
 
-  /// The frame as NV21 bytes, ready for ML Kit.
+  /// Raw bytes for the frame in the platform-native format, ready for ML Kit.
   ///
-  /// CameraX can produce NV21 directly when the controller is created with
-  /// `ImageFormatGroup.nv21`. In that case the plugin hands over one plane and
-  /// no conversion is needed. The three-plane YUV path is kept as a fallback
-  /// for devices or platforms that ignore the requested format.
+  /// On Android: NV21 (CameraX single plane, or converted from YUV420).
+  /// On iOS: BGRA8888 single plane, passed straight through.
+  /// No conversion is ever attempted on iOS — the camera is opened with
+  /// `ImageFormatGroup.bgra8888` so the plugin hands over one plane directly.
   Uint8List get nv21 {
     final planes = image.planes;
     if (planes.isEmpty) return Uint8List(0);
+    // iOS BGRA8888 always has a single plane; Android NV21 from CameraX does
+    // too. The three-plane path is only reached on Android devices that ignore
+    // the requested NV21 format and hand back raw YUV420.
     if (planes.length == 1) return planes.first.bytes;
     return _yuv420ToNv21(image);
   }
+
+  /// Bytes-per-row for the first (and on iOS, only) plane.
+  ///
+  /// ML Kit needs this when constructing InputImageMetadata on iOS.
+  int get bytesPerRow => image.planes.first.bytesPerRow;
 }
 
 Uint8List _yuv420ToNv21(CameraImage image) {
@@ -71,13 +80,24 @@ Uint8List _yuv420ToNv21(CameraImage image) {
 
 typedef FrameCallback = void Function(CameraFrame frame);
 
+/// Why the camera would not start.
+///
+/// The source does not choose the language: the live screen maps this to a
+/// Hindi or English sentence.
+enum CameraStartError {
+  permissionDenied,
+  permissionBlocked,
+  noCamera,
+  couldNotStart,
+}
+
 /// Supplies frames without the live screen knowing where they came from.
 ///
 /// Section 8 of the specification asks for this boundary so an external
 /// camera can be added later without rewriting the pipeline. Today the only
 /// implementation is [PhoneCameraFrameSource].
 abstract class FrameSource {
-  Future<String?> start({required FrameCallback onFrame});
+  Future<CameraStartError?> start({required FrameCallback onFrame});
 
   Future<void> stop();
 
@@ -104,22 +124,19 @@ class PhoneCameraFrameSource extends FrameSource {
   bool get isRunning => _running;
 
   @override
-  Future<String?> start({required FrameCallback onFrame}) async {
+  Future<CameraStartError?> start({required FrameCallback onFrame}) async {
     if (_running) return null;
 
     final status = await Permission.camera.request();
     if (!status.isGranted) {
-      if (status.isPermanentlyDenied) {
-        return 'Camera access is switched off for Cue. Open Settings, then '
-            'Permissions, then Camera, and allow it.';
-      }
-      return 'Cue needs the camera to work. Double tap to try again and allow '
-          'camera access when the phone asks.';
+      return status.isPermanentlyDenied
+          ? CameraStartError.permissionBlocked
+          : CameraStartError.permissionDenied;
     }
 
     try {
       final cameras = await availableCameras();
-      if (cameras.isEmpty) return 'No camera was found on this phone.';
+      if (cameras.isEmpty) return CameraStartError.noCamera;
 
       final rear = cameras.firstWhere(
         (camera) => camera.lensDirection == CameraLensDirection.back,
@@ -132,7 +149,10 @@ class PhoneCameraFrameSource extends FrameSource {
         // at arm's length. 480p was legible only for headings in testing.
         ResolutionPreset.high,
         enableAudio: false,
-        imageFormatGroup: ImageFormatGroup.nv21,
+        // NV21 is Android-only. iOS outputs BGRA8888 from its camera pipeline.
+        imageFormatGroup: defaultTargetPlatform == TargetPlatform.android
+            ? ImageFormatGroup.nv21
+            : ImageFormatGroup.bgra8888,
       );
 
       await controller.initialize();
@@ -152,12 +172,13 @@ class PhoneCameraFrameSource extends FrameSource {
       return null;
     } on CameraException catch (error) {
       await _tearDown();
-      final detail = error.description ?? error.code;
-      return 'The camera could not start. $detail';
+      if (kDebugMode) {
+        debugPrint('camera: start failed ${error.code} ${error.description}');
+      }
+      return CameraStartError.couldNotStart;
     } catch (_) {
       await _tearDown();
-      return 'The camera could not start. Close any other app that is using '
-          'it, then double tap to try again.';
+      return CameraStartError.couldNotStart;
     }
   }
 

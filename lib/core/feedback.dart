@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:vibration/vibration.dart';
 
@@ -37,13 +38,13 @@ class Feedback {
     await _tone(520, 70, 0.22);
     await Future<void>.delayed(const Duration(milliseconds: 90));
     await _tone(780, 90, 0.22);
-    await _vibrate(duration: 45);
+    await _vibrate(duration: 45, iosLevel: 'medium');
   }
 
   /// FR-03: clear beep plus one pulse when a result is spoken.
   Future<void> found() async {
     await _tone(880, 60, 0.18);
-    await _vibrate(duration: 55);
+    await _vibrate(duration: 55, iosLevel: 'medium');
   }
 
   /// FR-09 / manual read with nothing usable: low double tone, two pulses.
@@ -51,7 +52,7 @@ class Feedback {
     await _tone(330, 80, 0.2);
     await Future<void>.delayed(const Duration(milliseconds: 90));
     await _tone(260, 120, 0.2);
-    await _vibrate(pattern: const <int>[0, 60, 60, 60]);
+    await _vibrate(pattern: const <int>[0, 60, 60, 60], iosLevel: 'light');
   }
 
   /// FR-04: a distinct tone accompanies an aiming instruction.
@@ -67,17 +68,45 @@ class Feedback {
     await _tone(420, 80, 0.2);
     await Future<void>.delayed(const Duration(milliseconds: 80));
     await _tone(280, 120, 0.2);
-    await _vibrate(duration: 130);
+    await _vibrate(duration: 130, iosLevel: 'heavy');
   }
 
   /// Error: buzz and three pulses, then a plain-language explanation.
   Future<void> error() async {
     await _tone(200, 150, 0.25);
-    await _vibrate(pattern: const <int>[0, 80, 50, 80, 50, 80]);
+    await _vibrate(
+      pattern: const <int>[0, 80, 50, 80, 50, 80],
+      iosLevel: 'heavy',
+    );
+  }
+
+  /// Voice command: Cue is ready to listen.
+  ///
+  /// Rising, so it cannot be confused with the falling "paused" or the low
+  /// "not heard" signal. No speech: the microphone would hear it.
+  Future<void> listening() async {
+    await _tone(620, 60, 0.2);
+    await Future<void>.delayed(const Duration(milliseconds: 70));
+    await _tone(930, 80, 0.2);
+    await _vibrate(duration: 40, iosLevel: 'medium');
+  }
+
+  /// Voice command: the words were understood.
+  Future<void> heard() async {
+    await _tone(1100, 45, 0.18);
+    await _vibrate(duration: 25, iosLevel: 'light');
+  }
+
+  /// Voice command: nothing usable was heard.
+  Future<void> notHeard() async {
+    await _tone(300, 70, 0.2);
+    await Future<void>.delayed(const Duration(milliseconds: 80));
+    await _tone(220, 100, 0.2);
+    await _vibrate(pattern: const <int>[0, 40, 50, 40], iosLevel: 'light');
   }
 
   /// Confirmation that a gesture was received.
-  Future<void> gesture() => _vibrate(duration: 30);
+  Future<void> gesture() => _vibrate(duration: 30, iosLevel: 'light');
 
   /// Searching: soft slow tick. No vibration, no speech.
   Future<void> tick() => _tone(660, 40, 0.06);
@@ -104,7 +133,27 @@ class Feedback {
   Future<void> _vibrate({
     int duration = 50,
     List<int>? pattern,
+    // On iOS the vibration package ignores duration/pattern.
+    // 'light', 'medium' (default), 'heavy', or 'selection'.
+    String iosLevel = 'medium',
   }) async {
+    if (defaultTargetPlatform == TargetPlatform.iOS) {
+      // Use Flutter's HapticFeedback which maps to UIImpactFeedbackGenerator.
+      try {
+        switch (iosLevel) {
+          case 'light':
+            await HapticFeedback.lightImpact();
+          case 'heavy':
+            await HapticFeedback.heavyImpact();
+          case 'selection':
+            await HapticFeedback.selectionClick();
+          default:
+            await HapticFeedback.mediumImpact();
+        }
+      } catch (_) {}
+      return;
+    }
+
     if (!_hasVibrator) return;
     try {
       if (pattern != null) {

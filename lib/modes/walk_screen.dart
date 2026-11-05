@@ -18,9 +18,7 @@ class _WalkScreenState extends State<WalkScreen> {
   @override
   void initState() {
     super.initState();
-    AudioBus.instance.say(
-      'Walk mode. Press Start when you are ready to move.',
-    );
+    AudioBus.instance.say('Walk mode. Press Start when you are ready to move.');
   }
 
   void _toggle() {

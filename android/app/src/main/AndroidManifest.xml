@@ -5,6 +5,9 @@
     <uses-permission android:name="android.permission.CAMERA"/>
     <!-- Vibration: used as feedback instead of sound when the user asks. -->
     <uses-permission android:name="android.permission.VIBRATE"/>
+    <!-- Microphone: only while the user holds the voice-command gesture.
+         Cue does not record or store audio. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO"/>
 
     <!-- required="false" so the app still installs on a device with no
          autofocus. The app reports that limits the demo, it does not crash. -->
@@ -57,6 +60,11 @@
              to speech engine can be invisible and TTS fails silently. -->
         <intent>
             <action android:name="android.intent.action.TTS_SERVICE"/>
+        </intent>
+        <!-- Android 11+ also hides the speech-recognition service. Without
+             this, press-to-talk cannot find the phone's recogniser. -->
+        <intent>
+            <action android:name="android.speech.RecognitionService"/>
         </intent>
     </queries>
 </manifest>

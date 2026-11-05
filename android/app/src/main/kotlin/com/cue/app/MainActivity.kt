@@ -5,6 +5,7 @@ import android.media.AudioManager
 import android.media.AudioTrack
 import android.os.Handler
 import android.os.Looper
+import android.view.KeyEvent
 import android.view.WindowManager
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -20,12 +21,38 @@ import kotlin.math.sin
  * enough for a tick, a beep and the rising pitch that FR-04 asks for. The
  * channel is deliberately small and fails silently, because audio is feedback
  * and never a reason to interrupt a reading.
+ *
+ * The activity also turns a long press of the volume-down key into a
+ * press-to-talk trigger. A physical key is easier to find by touch than a
+ * multi-finger gesture, and it works while TalkBack is running. A short press
+ * still changes the volume, so the key keeps its normal job.
  */
 class MainActivity : FlutterActivity() {
     private val channelName = "cue/feedback"
+    private val keysChannelName = "cue/keys"
+
+    private var keysChannel: MethodChannel? = null
+    private var volumeHoldStarted = false
+
+    // One handler for the whole activity. removeCallbacks() only removes a
+    // runnable from the handler instance it was posted on, so creating a new
+    // Handler for every key press would leave the old long-press callback
+    // alive. A short press would then start listening 450 ms later, after the
+    // user had already let go.
+    private val handler = Handler(Looper.getMainLooper())
+
+    private val volumeHoldRunnable = Runnable {
+        volumeHoldStarted = true
+        keysChannel?.invokeMethod("talkStart", null)
+    }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+
+        keysChannel = MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            keysChannelName
+        )
 
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, channelName)
             .setMethodCallHandler { call, result ->
@@ -45,6 +72,55 @@ class MainActivity : FlutterActivity() {
                     else -> result.notImplemented()
                 }
             }
+    }
+
+    /**
+     * Volume-down long press starts a voice command.
+     *
+     * The key-down event is consumed so the volume does not slide down while
+     * the user holds the key. If the key is released before [volumeHoldMs],
+     * the press was a normal volume press, so the stream volume is lowered by
+     * one step here instead.
+     */
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (event.keyCode != KeyEvent.KEYCODE_VOLUME_DOWN) {
+            return super.dispatchKeyEvent(event)
+        }
+
+        when (event.action) {
+            KeyEvent.ACTION_DOWN -> {
+                if (event.repeatCount == 0) {
+                    volumeHoldStarted = false
+                    handler.postDelayed(volumeHoldRunnable, volumeHoldMs)
+                }
+                return true
+            }
+
+            KeyEvent.ACTION_UP -> {
+                handler.removeCallbacks(volumeHoldRunnable)
+                if (volumeHoldStarted) {
+                    volumeHoldStarted = false
+                    keysChannel?.invokeMethod("talkEnd", null)
+                } else {
+                    // A short press never reached the system, so apply the
+                    // volume change the user expected.
+                    val audio = getSystemService(AUDIO_SERVICE) as AudioManager
+                    audio.adjustStreamVolume(
+                        AudioManager.STREAM_MUSIC,
+                        AudioManager.ADJUST_LOWER,
+                        AudioManager.FLAG_SHOW_UI
+                    )
+                }
+                return true
+            }
+        }
+
+        return super.dispatchKeyEvent(event)
+    }
+
+    private companion object {
+        /** How long volume-down must be held before it means "talk". */
+        const val volumeHoldMs = 450L
     }
 
     /**

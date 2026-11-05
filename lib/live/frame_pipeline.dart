@@ -6,6 +6,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart' show DeviceOrientation;
 
 import '../core/audio_bus.dart';
+import '../core/cue_language.dart';
+import '../core/cue_strings.dart';
 import '../core/feedback.dart';
 import '../core/text_similarity.dart';
 import '../vision/frame_source.dart';
@@ -22,7 +24,12 @@ import 'stability_gate.dart';
 /// (and tested) as a sequence of decisions: throttle, quality gate, OCR,
 /// stability, speak, aim.
 class FramePipeline {
-  FramePipeline({required this.onResult, this.onCue});
+  FramePipeline({
+    required this.onResult,
+    this.onCue,
+    this.onLanguageDetected,
+    CueLanguage language = CueLanguage.english,
+  }) : _language = language; // ignore: prefer_initializing_formals
 
   /// Called with the text that was actually spoken, for the sighted-helper
   /// caption on screen.
@@ -30,6 +37,20 @@ class FramePipeline {
 
   /// Called when an aiming instruction is issued, for logging or the caption.
   final void Function(AimingCue cue)? onCue;
+
+  /// Called when the pipeline detects a script that differs from the current
+  /// language setting.
+  ///
+  /// The callback must switch voice output and save the preference, then
+  /// return true. Returning false tells the pipeline to stay on the old
+  /// script, which is what happens when the phone has no Hindi voice.
+  final Future<bool> Function(CueLanguage detected)? onLanguageDetected;
+
+  CueLanguage _language;
+
+  CueLanguage get language => _language;
+
+  CueStrings get _strings => CueStrings(_language);
 
   static const Duration _minFrameGap = Duration(milliseconds: 320);
   static const Duration _staleAfter = Duration(milliseconds: 1400);
@@ -84,6 +105,15 @@ class FramePipeline {
   /// When "I see something, but I cannot tell what it is" was last spoken.
   DateTime? _lastNotTextAt;
 
+  /// The last time the pipeline tried the other script because the selected
+  /// recogniser found nothing. Prevents a wasted second OCR pass every frame.
+  DateTime? _lastAutoDetectAt;
+
+  /// When the user chose a language explicitly. Auto-detection stays quiet for
+  /// a while afterwards, so saying "English" is not immediately undone by the
+  /// page still being in Hindi.
+  DateTime? _manualLanguageAt;
+
   /// What the user last told Cue to look for. Text is the only built handler.
   Interpretation _interpretation = Interpretation.text;
 
@@ -103,6 +133,18 @@ class FramePipeline {
     _lastNotTextAt = null;
     _lastAttempt = DateTime.fromMillisecondsSinceEpoch(0);
     _lastOcr = DateTime.fromMillisecondsSinceEpoch(0);
+  }
+
+  /// Switches the OCR script and clears every frame-to-frame gate.
+  ///
+  /// Text from the old script must not be compared with text from the new one:
+  /// a Hindi page and an English page have no tokens in common, and the
+  /// stability gate would otherwise ask for an extra confirmation.
+  void setLanguage(CueLanguage value) {
+    if (value == _language) return;
+    _language = value;
+    _manualLanguageAt = DateTime.now();
+    reset();
   }
 
   /// Entry point wired to the camera stream. Fire-and-forget on purpose: the
@@ -131,6 +173,7 @@ class FramePipeline {
     _lastAttempt = DateTime.fromMillisecondsSinceEpoch(0);
     _lastOcr = DateTime.fromMillisecondsSinceEpoch(0);
     _lastSpokenAt = null;
+    _lastAutoDetectAt = null;
   }
 
   Future<void> _handle(CameraFrame frame) async {
@@ -181,12 +224,69 @@ class FramePipeline {
         frame.deviceOrientation,
       );
       final watch = Stopwatch()..start();
-      final read = await OcrService.instance.readLiveFrame(
+      OcrRead read = await OcrService.instance.readLiveFrame(
         nv21: frame.nv21,
         width: frame.image.width,
         height: frame.image.height,
         rotation: rotation,
+        bytesPerRow: frame.bytesPerRow,
+        language: _language,
       );
+
+      // A stop/resume while OCR was queued cancels everything that follows,
+      // including the language-switch choice below.
+      if (generation != _generation) return;
+
+      // Script auto-detection: if the selected recogniser found nothing, try
+      // the other script once. A blind user cannot see that they are holding a
+      // Hindi page while Cue is set to English, so this is the one place where
+      // guessing is safer than silence.
+      //
+      // The switch is awaited: speaking Devanagari with the old English voice
+      // would be worse than waiting a moment for the new voice.
+      final speaking = AudioBus.instance.speaking.value;
+      final lastAuto = _lastAutoDetectAt;
+      final lastManual = _manualLanguageAt;
+      final autoDetectAllowed =
+          (lastAuto == null ||
+              now.difference(lastAuto) > const Duration(seconds: 15)) &&
+          (lastManual == null ||
+              now.difference(lastManual) > const Duration(seconds: 30)) &&
+          !speaking &&
+          !AudioBus.instance.hasReading;
+
+      if (read.text.trim().isEmpty &&
+          !metrics.isTooBlurry &&
+          autoDetectAllowed) {
+        _lastAutoDetectAt = now;
+        final other = _language == CueLanguage.english
+            ? CueLanguage.hindi
+            : CueLanguage.english;
+        final otherRead = await OcrService.instance.readLiveFrame(
+          nv21: frame.nv21,
+          width: frame.image.width,
+          height: frame.image.height,
+          rotation: rotation,
+          bytesPerRow: frame.bytesPerRow,
+          language: other,
+        );
+
+        if (otherRead.text.trim().isNotEmpty &&
+            looksLikeText(speakable(otherRead.text))) {
+          final switched = await onLanguageDetected?.call(other) ?? false;
+          if (switched) {
+            if (kDebugMode) {
+              debugPrint('live: auto-detected ${other.label} script');
+            }
+            _language = other;
+            read = otherRead;
+          }
+        }
+      }
+      // The switch itself is awaited, so the camera may have stopped while we
+      // waited for the voice. Do not speak from a superseded session.
+      if (generation != _generation) return;
+
       final text = speakable(read.text);
       final quality = ReadingQuality.of(text, read.confidence);
 
@@ -200,9 +300,6 @@ class FramePipeline {
           '${quality.reason == null ? '' : ' (${quality.reason})'}',
         );
       }
-
-      // The camera was stopped, or a new session began, while OCR ran.
-      if (generation != _generation) return;
 
       final scene = _router.decide(metrics: metrics, text: text);
       if (kDebugMode) {
@@ -289,8 +386,7 @@ class FramePipeline {
             unawaited(Feedback.instance.notSure());
             unawaited(
               AudioBus.instance.say(
-                'I am not sure. I cannot see text. Hold steady and point at '
-                'the page.',
+                _strings.notSureNoText,
                 priority: SpeechPriority.alert,
               ),
             );
@@ -323,8 +419,7 @@ class FramePipeline {
   void _sayUnbuiltMode() {
     unawaited(
       AudioBus.instance.say(
-        '${_interpretation.label} mode is not built yet. '
-        'Swipe to change mode.',
+        _strings.notBuilt(_strings.modeName(_interpretation.label)),
         priority: SpeechPriority.alert,
       ),
     );
@@ -335,6 +430,7 @@ class FramePipeline {
   /// FR-05's fallback. It waits for a few consecutive wordless frames so a
   /// passing shadow does not trigger it, and then stays quiet for a while.
   void _maybeSpeakNotText({required bool manual}) {
+    if (AudioBus.instance.isMuted) return;
     final now = DateTime.now();
 
     if (!manual) {
@@ -355,7 +451,7 @@ class FramePipeline {
     unawaited(Feedback.instance.notSure());
     unawaited(
       AudioBus.instance.say(
-        'I see something, but I cannot tell what it is.',
+        _strings.somethingThere,
         priority: SpeechPriority.alert,
       ),
     );
@@ -368,6 +464,7 @@ class FramePipeline {
   /// automatic path waits for a few consecutive failures and then keeps quiet
   /// for a while.
   void _maybeRefuseReading({required bool manual}) {
+    if (AudioBus.instance.isMuted) return;
     final now = DateTime.now();
 
     if (!manual) {
@@ -390,7 +487,7 @@ class FramePipeline {
     unawaited(Feedback.instance.notSure());
     unawaited(
       AudioBus.instance.say(
-        'I can see marks, but I cannot read them. Printed text works best.',
+        _strings.marksNotReadable,
         priority: SpeechPriority.alert,
       ),
     );
@@ -402,6 +499,11 @@ class FramePipeline {
     DateTime now,
     String text,
   ) {
+    // The microphone is open. Keep both the tone and the spoken cue out of it.
+    if (AudioBus.instance.isMuted) return;
+    // A sentence is being read. Framing tones are not useful then.
+    if (AudioBus.instance.reading.value) return;
+
     final recentlySpoken =
         _lastSpokenAt != null &&
         now.difference(_lastSpokenAt!) < const Duration(seconds: 6);
@@ -441,7 +543,10 @@ class FramePipeline {
     }
     unawaited(Feedback.instance.aimProblem(pitch: cue.toneHz, pan: cue.pan));
     unawaited(
-      AudioBus.instance.say(cue.speech, priority: SpeechPriority.navigation),
+      AudioBus.instance.say(
+        cue.speechFor(_language),
+        priority: SpeechPriority.navigation,
+      ),
     );
   }
 

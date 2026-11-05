@@ -39,8 +39,10 @@ const double minUncertainConfidence = 0.5;
 ///
 /// Typographic quotes, dashes and bullets are included because a real page
 /// uses them, and a page full of them is still text.
-const String _punctuation = ".,;:!?%\$£€₹/-()[]'"
-    '\u2018\u2019\u201c\u201d\u2013\u2014\u2026\u2022"&+#';
+const String _punctuation =
+    ".,;:!?%\$£€₹/-()[]'"
+    '\u2018\u2019\u201c\u201d\u2013\u2014\u2026\u2022"&+#'
+    '\u0964\u0965\u200C\u200D';
 
 /// How much the recogniser and the shape check believe a reading.
 enum ReadingTier {
@@ -112,7 +114,11 @@ class ReadingQuality {
     }
 
     if (confidence >= minTrustedConfidence) {
-      return ReadingQuality(confidence: confidence, plausible: true, tier: ReadingTier.certain);
+      return ReadingQuality(
+        confidence: confidence,
+        plausible: true,
+        tier: ReadingTier.certain,
+      );
     }
     if (confidence >= minUncertainConfidence) {
       return ReadingQuality(
@@ -141,25 +147,30 @@ class ReadingQuality {
 
 /// True when [text] looks like words rather than OCR noise.
 ///
-/// Rules, all cheap and language-agnostic enough for a Latin-script reader:
+/// Rules, all cheap and script-aware:
 ///
-/// - at least 85 % of visible characters are letters, digits or ordinary
-///   punctuation (symbol soup fails);
+/// - at least 85 % of visible characters are letters, digits, combining marks
+///   or ordinary punctuation (symbol soup fails);
 /// - at least 60 % of tokens look like words or numbers;
 /// - a page of mostly one- and two-character fragments fails, which is what
 ///   handwriting usually fragments into;
 /// - a single enormous unbroken token fails.
+///
+/// Devanagari vowel signs are combining marks (`\p{M}`), not letters, so a
+/// Latin-only test would reject perfectly good Hindi. The classes here are
+/// Unicode-aware on purpose.
 bool looksLikeText(String text) {
   final trimmed = text.trim();
   if (trimmed.length < 2) return false;
 
+  final meaningfulChar = RegExp(r'[\p{L}\p{M}\p{N}]', unicode: true);
   var visible = 0;
   var meaningful = 0;
   for (final rune in trimmed.runes) {
     final char = String.fromCharCode(rune);
     if (char.trim().isEmpty) continue;
     visible++;
-    if (RegExp(r'[A-Za-z0-9]').hasMatch(char)) {
+    if (meaningfulChar.hasMatch(char)) {
       meaningful++;
     } else if (_punctuation.contains(char)) {
       meaningful++;
@@ -191,25 +202,32 @@ bool looksLikeText(String text) {
 }
 
 bool _wordlike(String raw) {
-  final token = raw.replaceAll(RegExp(r'^[^\w]+|[^\w]+$'), '');
+  final token = raw.replaceAll(
+    RegExp(r'^[^\p{L}\p{M}\p{N}]+|[^\p{L}\p{M}\p{N}]+$', unicode: true),
+    '',
+  );
   if (token.isEmpty || token.length > 30) return false;
 
   // "aaaaaaa" or "111111" is a recognition loop, not a word.
   if (token.length >= 4 && token.split('').toSet().length == 1) return false;
 
-  final hasLetter = RegExp(r'[A-Za-z]').hasMatch(token);
-  final hasDigit = RegExp(r'[0-9]').hasMatch(token);
+  final hasLetter = RegExp(r'\p{L}', unicode: true).hasMatch(token);
+  final hasDigit = RegExp(r'\p{N}', unicode: true).hasMatch(token);
   if (!hasLetter && !hasDigit) return false;
 
   // One- and two-character tokens carry too little signal to judge on their
-  // own: "Dr", "TV", "52" and "I" are all real. Fragment soup is caught by the
-  // density rule above instead.
+  // own: "Dr", "TV", "52", "I" and "है" are all real. Fragment soup is caught
+  // by the density rule above instead.
   if (token.length <= 2) return true;
 
-  // A run of consonants with no vowel, no digit and no capitals is the shape
-  // most handwriting noise takes ("rnln", "fflrt"). Real short all-caps
-  // acronyms without a vowel ("BBC", "HRT") still pass.
-  if (hasLetter && !hasDigit && !RegExp(r'[aeiouyAEIOUY]').hasMatch(token)) {
+  // A run of Latin consonants with no vowel, no digit and no capitals is the
+  // shape most handwriting noise takes ("rnln", "fflrt"). Devanagari writes
+  // its vowels as marks, so this rule only applies to Latin letters.
+  final hasLatin = RegExp(r'[A-Za-z]').hasMatch(token);
+  if (hasLatin &&
+      hasLetter &&
+      !hasDigit &&
+      !RegExp(r'[aeiouyAEIOUY]').hasMatch(token)) {
     return token.length <= 4 && token == token.toUpperCase();
   }
 

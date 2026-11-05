@@ -48,6 +48,14 @@ kotlin {
     }
 }
 
+dependencies {
+    // Hindi OCR. google_mlkit_text_recognition declares the non-Latin models
+    // as compile-only, so the app itself must package the Devanagari model.
+    // Without this line TextRecognitionScript.devanagari fails at runtime and
+    // every Hindi page reads as empty.
+    implementation("com.google.mlkit:text-recognition-devanagari:16.0.1")
+}
+
 flutter {
     source = "../.."
 }

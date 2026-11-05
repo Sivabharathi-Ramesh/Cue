@@ -13,9 +13,16 @@ library;
 ///
 /// The result is only used for comparison. What is spoken is always the
 /// cleaned original text, never this normalised form.
+///
+/// Unicode-aware: Devanagari letters, vowel signs and nukta marks are kept, so
+/// two Hindi frames of the same page compare as similar instead of both
+/// normalising to an empty string.
 String normalizeText(String raw) {
   final lower = raw.toLowerCase();
-  final letters = lower.replaceAll(RegExp(r'[^a-z0-9 ]+'), ' ');
+  final letters = lower.replaceAll(
+    RegExp(r'[^\p{L}\p{M}\p{N}\u200C\u200D ]+', unicode: true),
+    ' ',
+  );
   return letters.replaceAll(RegExp(r'\s+'), ' ').trim();
 }
 
@@ -95,4 +102,3 @@ double charBigramSimilarity(String a, String b) {
 
   return (2 * intersection) / ((left.length - 1) + (right.length - 1));
 }
-

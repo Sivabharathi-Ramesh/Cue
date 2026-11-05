@@ -4,16 +4,13 @@ import 'dart:ui' show Size;
 import 'package:flutter/foundation.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 
+import '../core/cue_language.dart';
 import 'burst.dart';
 
 /// One live-camera OCR result, kept independent of the ML Kit result type so
 /// the pipeline can hold it without importing plugin classes everywhere.
 class OcrRead {
-  const OcrRead({
-    required this.text,
-    required this.blocks,
-    this.confidence,
-  });
+  const OcrRead({required this.text, required this.blocks, this.confidence});
 
   final String text;
   final List<TextBlock> blocks;
@@ -39,14 +36,21 @@ class OcrService {
   static final OcrService instance = OcrService._();
 
   TextRecognizer? _latin;
+  TextRecognizer? _devanagari;
 
   /// ML Kit holds one native recogniser. Warm-up, the Read screen and the
   /// live pipeline must not call it at the same time, so every operation is
   /// queued behind the previous one.
   Future<void> _tail = Future<void>.value();
 
-  TextRecognizer get _recognizer =>
-      _latin ??= TextRecognizer(script: TextRecognitionScript.latin);
+  TextRecognizer _recognizerFor(CueLanguage language) {
+    if (language.isHindi) {
+      return _devanagari ??= TextRecognizer(
+        script: TextRecognitionScript.devanagiri,
+      );
+    }
+    return _latin ??= TextRecognizer(script: TextRecognitionScript.latin);
+  }
 
   Future<T> _serialise<T>(Future<T> Function() action) {
     final completer = Completer<T>();
@@ -65,32 +69,41 @@ class OcrService {
   /// The first call into ML Kit can take several seconds while the model is
   /// loaded. Doing it once when a camera screen opens hides that behind
   /// aiming the camera, instead of making the first reading feel frozen.
-  Future<void> warmUp() {
+  Future<void> warmUp([CueLanguage language = CueLanguage.english]) {
     return _serialise(() async {
-      final recognizer = _recognizer;
+      final recognizer = _recognizerFor(language);
 
       final watch = Stopwatch()..start();
       try {
-        // A tiny blank frame is enough to force the model to load.
+        // A tiny blank frame forces the model to load.
+        // Format and row stride differ by platform.
         const width = 64;
         const height = 64;
-        final grey = Uint8List(width * height * 3 ~/ 2)
-          ..fillRange(0, width * height, 0x80);
+        final isAndroid = defaultTargetPlatform == TargetPlatform.android;
+        final format = isAndroid
+            ? InputImageFormat.nv21
+            : InputImageFormat.bgra8888;
+        // NV21: Y plane + interleaved VU => width * height * 1.5 bytes.
+        // BGRA8888: 4 bytes per pixel.
+        final bytes = isAndroid
+            ? (Uint8List(width * height * 3 ~/ 2)
+                ..fillRange(0, width * height, 0x80))
+            : Uint8List(width * height * 4);
+        final bytesPerRow = isAndroid ? width : width * 4;
 
         await recognizer.processImage(
           InputImage.fromBytes(
-            bytes: grey,
+            bytes: bytes,
             metadata: InputImageMetadata(
               size: const Size(64, 64),
               rotation: InputImageRotation.rotation0deg,
-              format: InputImageFormat.nv21,
-              bytesPerRow: width,
+              format: format,
+              bytesPerRow: bytesPerRow,
             ),
           ),
         );
       } catch (_) {
-        // Warming up is an optimisation. If it fails, the real call still
-        // runs.
+        // Warming up is an optimisation. If it fails, the real call still runs.
       }
       debugPrint('ocr: warmup ${watch.elapsedMilliseconds}ms');
     });
@@ -98,14 +111,21 @@ class OcrService {
 
   /// Reads text from a still image on disk, or a raw burst frame.
   /// Kept for the original Read screen.
-  Future<String> readFrame(BurstFrame frame) {
+  Future<String> readFrame(
+    BurstFrame frame, {
+    CueLanguage language = CueLanguage.english,
+  }) {
     return _serialise(() async {
-      final recognizer = _recognizer;
+      final recognizer = _recognizerFor(language);
 
       final InputImage input;
       final nv21 = frame.nv21;
 
       if (nv21 != null) {
+        // Burst frames from Android are always NV21.
+        // If a future iOS burst path lands here it will carry BGRA bytes, but
+        // the existing burst implementation only runs on Android, so NV21 is
+        // correct here unconditionally for now.
         input = InputImage.fromBytes(
           bytes: nv21,
           metadata: InputImageMetadata(
@@ -132,16 +152,21 @@ class OcrService {
     });
   }
 
-  /// Reads text directly from a live NV21 camera frame, without touching disk.
+  /// Reads text directly from a live camera frame, without touching disk.
   ///
   /// [rotation] is the clockwise rotation needed to make the image upright,
   /// in degrees (0, 90, 180 or 270). ML Kit applies it before recognition, so
   /// the returned block boxes are already in upright coordinates.
+  ///
+  /// On Android the bytes are NV21; on iOS they are BGRA8888. [bytesPerRow]
+  /// is the row stride of the first plane (width on Android, width*4 on iOS).
   Future<OcrRead> readLiveFrame({
     required Uint8List nv21,
     required int width,
     required int height,
     required int rotation,
+    required int bytesPerRow,
+    CueLanguage language = CueLanguage.english,
   }) {
     return _serialise(() async {
       if (nv21.isEmpty || width <= 0 || height <= 0) {
@@ -149,17 +174,22 @@ class OcrService {
       }
 
       try {
+        final isAndroid = defaultTargetPlatform == TargetPlatform.android;
+        final format = isAndroid
+            ? InputImageFormat.nv21
+            : InputImageFormat.bgra8888;
+
         final input = InputImage.fromBytes(
           bytes: nv21,
           metadata: InputImageMetadata(
             size: Size(width.toDouble(), height.toDouble()),
             rotation: _rotation(rotation),
-            format: InputImageFormat.nv21,
-            bytesPerRow: width,
+            format: format,
+            bytesPerRow: bytesPerRow,
           ),
         );
 
-        final result = await _recognizer.processImage(input);
+        final result = await _recognizerFor(language).processImage(input);
         return OcrRead(
           text: result.text,
           blocks: result.blocks,
@@ -174,7 +204,9 @@ class OcrService {
   Future<void> dispose() async {
     await _tail;
     await _latin?.close();
+    await _devanagari?.close();
     _latin = null;
+    _devanagari = null;
   }
 }
 

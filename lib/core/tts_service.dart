@@ -5,6 +5,8 @@ import 'dart:io' show File, Platform;
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:path_provider/path_provider.dart';
 
+import 'cue_language.dart';
+
 /// One voice for the whole app.
 ///
 /// Every screen must speak through this class, never through FlutterTts
@@ -46,6 +48,15 @@ class TtsService {
   bool _ready = false;
   Future<void>? _initialising;
 
+  CueLanguage _language = CueLanguage.english;
+  bool _languageApplied = false;
+  String? _appliedLocale;
+
+  /// Null until the platform has been asked whether it can list voices. Some
+  /// engines return an empty list, and then trying the locale is better than
+  /// refusing to speak at all.
+  bool? _canListLanguages;
+
   double _rate = 0.0;
 
   /// The rate currently applied to the voice, on the flutter_tts scale.
@@ -83,10 +94,20 @@ class TtsService {
     }
 
     try {
-      await _tts.setLanguage('en-IN');
+      _language = LanguageService.instance.language.value;
+      _languageApplied = await _applyLanguage(_language);
+      if (!_languageApplied) {
+        // The saved language has no installed voice. Fall back to the voice
+        // that is always present instead of letting an English engine try to
+        // pronounce Devanagari. [prepareLanguage] reports the result so the
+        // caller can save it and switch OCR and speech recognition to match.
+        _language = CueLanguage.english;
+        _languageApplied = await _applyLanguage(CueLanguage.english);
+      }
     } catch (_) {
-      // Some devices do not ship an Indian English voice. Fall back silently.
-      await _tts.setLanguage('en-US');
+      // Some devices do not ship an Indian voice. Fall back silently.
+      _language = CueLanguage.english;
+      await _tryLocale('en-US');
     }
 
     // A saved speed survives restarts. The file is tiny and read once, before
@@ -102,6 +123,101 @@ class TtsService {
   Future<void> _applyRate() async {
     await _tts.setSpeechRate(_currentRate);
   }
+
+  /// The voice currently selected.
+  CueLanguage get language => _language;
+
+  /// False when the engine has no voice for the selected language.
+  bool get languageAvailable => _languageApplied;
+
+  /// The exact locale the engine accepted, for the debug log.
+  String? get appliedLocale => _appliedLocale;
+
+  /// Initialises the engine and returns the language it can actually speak.
+  ///
+  /// If the saved language is Hindi and this phone has no Hindi voice, the
+  /// result is English. The caller must save that result so OCR and speech
+  /// recognition use the same language as the voice; otherwise the first
+  /// sentence would be Devanagari text read by an English engine.
+  Future<CueLanguage> prepareLanguage() async {
+    await _init();
+    return _language;
+  }
+
+  /// Switches the reading voice.
+  ///
+  /// Returns false when the phone has no voice for [language]. The caller
+  /// should then keep the old language rather than read Hindi text with an
+  /// English voice, which would sound like nonsense to the user.
+  Future<bool> setLanguage(CueLanguage language) async {
+    await _init();
+    if (language == _language && _languageApplied) return true;
+
+    final applied = await _applyLanguage(language);
+    if (!applied) return false;
+
+    _language = language;
+    _languageApplied = true;
+    return true;
+  }
+
+  Future<bool> _applyLanguage(CueLanguage language) async {
+    final candidates = language.isHindi
+        ? const <String>['hi-IN', 'hi']
+        : const <String>['en-IN', 'en-US'];
+
+    for (final candidate in candidates) {
+      if (!await _isAvailable(candidate)) continue;
+      if (await _tryLocale(candidate)) return true;
+    }
+
+    if (!language.isHindi) {
+      // Some engines claim not to list English but still speak it. For the
+      // fallback language, trying is better than refusing.
+      return await _tryLocale('en-IN') || await _tryLocale('en-US');
+    }
+    return false;
+  }
+
+  Future<bool> _isAvailable(String locale) async {
+    if (_canListLanguages == false) return true;
+
+    try {
+      final languages = await _tts.getLanguages;
+      if (languages is! List || languages.isEmpty) {
+        _canListLanguages = false;
+        return true;
+      }
+      _canListLanguages = true;
+
+      final wanted = _normaliseLocale(locale);
+      for (final item in languages) {
+        final id = item is Map ? item['locale']?.toString() : item?.toString();
+        if (id == null) continue;
+        final normalised = _normaliseLocale(id);
+        if (normalised == wanted || normalised.startsWith('$wanted-')) {
+          return true;
+        }
+      }
+      return false;
+    } catch (_) {
+      _canListLanguages = false;
+      return true;
+    }
+  }
+
+  Future<bool> _tryLocale(String locale) async {
+    try {
+      await _tts.setLanguage(locale);
+      _appliedLocale = locale;
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  String _normaliseLocale(String locale) =>
+      locale.toLowerCase().replaceAll('_', '-');
 
   /// Moves the reading speed one step slower.
   ///

@@ -1,5 +1,7 @@
 import 'dart:ui';
 
+import '../core/cue_language.dart';
+
 /// Where the recognised text sits inside the frame, in upright coordinates.
 ///
 /// Built from ML Kit block boxes. Kept separate from ML Kit so the aiming
@@ -45,7 +47,9 @@ class TextLayout {
     }
 
     final frameArea = frameSize.width * frameSize.height;
-    final coverage = frameArea <= 0 ? 0.0 : (union.width * union.height) / frameArea;
+    final coverage = frameArea <= 0
+        ? 0.0
+        : (union.width * union.height) / frameArea;
 
     return TextLayout(
       coverage: coverage.clamp(0.0, 1.0),
@@ -73,6 +77,25 @@ extension AimingCueSpeech on AimingCue {
         return 'Move right.';
       case AimingCue.nothingFound:
         return 'No text yet. Point at a page.';
+    }
+  }
+
+  /// The same instruction in the user's reading language.
+  String speechFor(CueLanguage language) {
+    if (!language.isHindi) return speech;
+    switch (this) {
+      case AimingCue.tooDark:
+        return 'बहुत अंधेरा है। अच्छी रोशनी में जाएँ।';
+      case AimingCue.tooClose:
+        return 'बहुत पास है। फ़ोन पीछे करें।';
+      case AimingCue.tooFar:
+        return 'बहुत दूर है। फ़ोन पास करें।';
+      case AimingCue.moveLeft:
+        return 'बाएँ जाएँ।';
+      case AimingCue.moveRight:
+        return 'दाएँ जाएँ।';
+      case AimingCue.nothingFound:
+        return 'अभी पाठ नहीं दिख रहा। पेज पर कैमरा रखें।';
     }
   }
 }

@@ -150,7 +150,8 @@ void main() {
     expect(second, isNull);
   });
 
-  test('TextLayout unions block boxes and measures the centre', () {    final result = TextLayout.fromRects(
+  test('TextLayout unions block boxes and measures the centre', () {
+    final result = TextLayout.fromRects(
       <Rect>[
         const Rect.fromLTWH(100, 100, 200, 40),
         const Rect.fromLTWH(100, 150, 200, 40),

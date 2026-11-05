@@ -21,13 +21,11 @@ class BurstFrame {
     required this.sharpness,
   }) : path = null;
 
-  const BurstFrame.file({
-    required this.path,
-    required this.sharpness,
-  }) : nv21 = null,
-       width = 0,
-       height = 0,
-       rotation = 0;
+  const BurstFrame.file({required this.path, required this.sharpness})
+    : nv21 = null,
+      width = 0,
+      height = 0,
+      rotation = 0;
 
   /// Still-image file, when the burst had to fall back to `takePicture`.
   final String? path;
@@ -214,9 +212,10 @@ Future<List<BurstFrame>> _stillBurst(
       captured.add(file);
 
       scoring.add(
-        compute(_sharpnessAtPath, file.path).then(
-          (score) => BurstFrame.file(path: file.path, sharpness: score),
-        ),
+        compute(
+          _sharpnessAtPath,
+          file.path,
+        ).then((score) => BurstFrame.file(path: file.path, sharpness: score)),
       );
 
       onProgress?.call(i + 1);
@@ -272,7 +271,8 @@ double _nv21Sharpness(Uint8List luma, int rowStride, int width, int height) {
     final down = (y + step) * rowStride;
 
     for (var x = step; x < width - step; x += step) {
-      final laplacian = luma[row + x - step] +
+      final laplacian =
+          luma[row + x - step] +
           luma[row + x + step] +
           luma[up + x] +
           luma[down + x] -
@@ -346,10 +346,7 @@ double _laplacianVariance(img.Image grey) {
 ///
 /// Streamed buffers are in the sensor's own orientation, usually landscape.
 /// This is the same compensation ML Kit's own camera sample uses.
-int _rotationFor(
-  CameraDescription description,
-  DeviceOrientation orientation,
-) {
+int _rotationFor(CameraDescription description, DeviceOrientation orientation) {
   final deviceRotation = switch (orientation) {
     DeviceOrientation.portraitUp => 0,
     DeviceOrientation.landscapeLeft => 90,

@@ -1,6 +1,5 @@
-import 'dart:typed_data';
-
 import 'package:camera/camera.dart';
+import 'package:flutter/foundation.dart';
 
 /// Measurements taken from one camera frame before OCR sees it.
 class FrameMetrics {
@@ -68,6 +67,26 @@ class FrameSampler {
     final rowStride = plane.bytesPerRow;
     final pixelStride = plane.bytesPerPixel ?? 1;
 
+    final isBgra =
+        defaultTargetPlatform == TargetPlatform.iOS &&
+        image.planes.length == 1 &&
+        rowStride >= width * 4;
+    if (isBgra) {
+      final brightness = _meanLuminanceBgra(bytes, width, height, rowStride);
+      final sharpness = _laplacianVarianceBgra(bytes, width, height, rowStride);
+      final thumbnail = _thumbnailBgra(bytes, width, height, rowStride);
+      final change = _difference(_previousThumbnail, thumbnail);
+      _previousThumbnail = thumbnail;
+
+      return FrameMetrics(
+        brightness: brightness,
+        sharpness: sharpness,
+        change: change,
+        width: width,
+        height: height,
+      );
+    }
+
     final brightness = _meanLuminance(
       bytes,
       width,
@@ -97,6 +116,112 @@ class FrameSampler {
 
   void reset() {
     _previousThumbnail = null;
+  }
+
+  /// Approximate luma of one BGRA pixel, 0–255.
+  ///
+  /// iOS BGRA8888 frames are treated as "not NV21"; scanning the alpha byte
+  /// as if it were Y would inflate the darkness score and hide every
+  /// too-dark frame.
+  double _bgraLuma(Uint8List bytes, int row, int x) {
+    final base = row + x * 4;
+    if (base + 2 >= bytes.length) return 0;
+    return 0.114 * bytes[base] +
+        0.587 * bytes[base + 1] +
+        0.299 * bytes[base + 2];
+  }
+
+  double _meanLuminanceBgra(
+    Uint8List bytes,
+    int width,
+    int height,
+    int rowStride,
+  ) {
+    const step = 4;
+    var sum = 0.0;
+    var count = 0;
+
+    for (var y = 0; y < height; y += step) {
+      final row = y * rowStride;
+      for (var x = 0; x < width; x += step) {
+        sum += _bgraLuma(bytes, row, x);
+        count++;
+      }
+    }
+
+    return count == 0 ? 0 : sum / count;
+  }
+
+  double _laplacianVarianceBgra(
+    Uint8List bytes,
+    int width,
+    int height,
+    int rowStride,
+  ) {
+    const step = 2;
+    var sum = 0.0;
+    var sumSquares = 0.0;
+    var count = 0;
+
+    for (var y = step; y < height - step; y += step) {
+      final row = y * rowStride;
+      final up = (y - step) * rowStride;
+      final down = (y + step) * rowStride;
+
+      for (var x = step; x < width - step; x += step) {
+        final centre = _bgraLuma(bytes, row, x);
+        final left = _bgraLuma(bytes, row, x - step);
+        final right = _bgraLuma(bytes, row, x + step);
+        final upValue = _bgraLuma(bytes, up, x);
+        final downValue = _bgraLuma(bytes, down, x);
+
+        final laplacian = left + right + upValue + downValue - 4 * centre;
+        sum += laplacian;
+        sumSquares += laplacian * laplacian;
+        count++;
+      }
+    }
+
+    if (count == 0) return 0;
+    final mean = sum / count;
+    return (sumSquares / count) - (mean * mean);
+  }
+
+  Uint8List _thumbnailBgra(
+    Uint8List bytes,
+    int width,
+    int height,
+    int rowStride,
+  ) {
+    final thumbnail = Uint8List(_thumbnailSize * _thumbnailSize);
+    final blockWidth = width / _thumbnailSize;
+    final blockHeight = height / _thumbnailSize;
+
+    for (var ty = 0; ty < _thumbnailSize; ty++) {
+      final startY = (ty * blockHeight).floor();
+      final endY = ((ty + 1) * blockHeight).floor().clamp(startY + 1, height);
+
+      for (var tx = 0; tx < _thumbnailSize; tx++) {
+        final startX = (tx * blockWidth).floor();
+        final endX = ((tx + 1) * blockWidth).floor().clamp(startX + 1, width);
+
+        var sum = 0.0;
+        var count = 0;
+        for (var y = startY; y < endY; y += 2) {
+          final row = y * rowStride;
+          for (var x = startX; x < endX; x += 2) {
+            sum += _bgraLuma(bytes, row, x);
+            count++;
+          }
+        }
+
+        thumbnail[ty * _thumbnailSize + tx] = count == 0
+            ? 0
+            : (sum / count).round();
+      }
+    }
+
+    return thumbnail;
   }
 
   double _meanLuminance(

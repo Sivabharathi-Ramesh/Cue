@@ -31,12 +31,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
           padding: const EdgeInsets.all(16),
           children: [
             SwitchListTile(
-              title: const Text('Vibration feedback', style: TextStyle(fontSize: 20)),
+              title: const Text(
+                'Vibration feedback',
+                style: TextStyle(fontSize: 20),
+              ),
               value: _haptics,
               onChanged: (v) => setState(() => _haptics = v),
             ),
             SwitchListTile(
-              title: const Text('Keep screen off', style: TextStyle(fontSize: 20)),
+              title: const Text(
+                'Keep screen off',
+                style: TextStyle(fontSize: 20),
+              ),
               subtitle: const Text('Saves battery in walk mode'),
               value: _keepScreenOff,
               onChanged: (v) => setState(() => _keepScreenOff = v),

@@ -30,6 +30,10 @@ flutter_ios_podfile_setup
 target 'Runner' do
   use_frameworks!
 
+  # Hindi OCR model. ML Kit ships non-Latin scripts as separate pods, so the
+  # Devanagari recogniser is not present unless the app asks for it.
+  pod 'GoogleMLKit/TextRecognitionDevanagari', '~> 9.0.0'
+
   flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
   target 'RunnerTests' do
     inherit! :search_paths

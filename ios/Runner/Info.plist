@@ -69,6 +69,8 @@
 	<key>NSCameraUsageDescription</key>
 	<string>Cue uses the camera to read text aloud, identify objects and find things on the floor. All processing happens on this phone.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Cue does not record audio. This is only required by the camera library when video recording is enabled, which this app does not use.</string>
+	<string>Cue uses the microphone only while you hold the voice-command gesture. Audio is not stored or uploaded by Cue.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Cue uses speech recognition to understand commands such as read, repeat, stop and help. Audio is not stored by Cue.</string>
 </dict>
 </plist>

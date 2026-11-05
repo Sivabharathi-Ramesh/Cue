@@ -19,6 +19,9 @@ dependencies:
 
   # Speech
   flutter_tts: 4.2.5
+  # Press-to-talk voice commands. Uses the phone's own speech recogniser;
+  # no audio is stored by Cue.
+  speech_to_text: 7.5.0
 
   # Camera and on-device vision
   camera: 0.12.2

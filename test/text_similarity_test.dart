@@ -10,6 +10,11 @@ void main() {
         'hello world second line',
       );
     });
+
+    test('keeps Devanagari letters and marks', () {
+      expect(normalizeText('  यह, एक वाक्य है। '), 'यह एक वाक्य है');
+      expect(normalizeText('कीमत ₹५०० है'), 'कीमत ५०० है');
+    });
   });
 
   group('tokenJaccard', () {
@@ -39,10 +44,7 @@ void main() {
     });
 
     test('a different page is entirely new', () {
-      expect(
-        newTokenRatio('turn left at the sign', 'danger high voltage'),
-        1,
-      );
+      expect(newTokenRatio('turn left at the sign', 'danger high voltage'), 1);
     });
 
     test('a mostly new page clears the speak threshold', () {
@@ -51,6 +53,23 @@ void main() {
           'chapter one the beginning',
           'chapter two the middle of the story',
         ),
+        greaterThan(0.35),
+      );
+    });
+  });
+
+  group('Hindi text comparison', () {
+    test('near-identical Hindi frames score high', () {
+      final score = tokenJaccard(
+        'यह पेज हिंदी में लिखा है',
+        'यह पेज हिंदी में लिखा हुआ है',
+      );
+      expect(score, greaterThan(0.6));
+    });
+
+    test('a different Hindi page clears the speak threshold', () {
+      expect(
+        newTokenRatio('बिल की कुल राशि', 'दवा की अंतिम तारीख'),
         greaterThan(0.35),
       );
     });
