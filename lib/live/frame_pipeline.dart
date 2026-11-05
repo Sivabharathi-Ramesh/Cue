@@ -10,8 +10,12 @@ import '../core/cue_language.dart';
 import '../core/cue_strings.dart';
 import '../core/feedback.dart';
 import '../core/text_similarity.dart';
+import '../core/tts_service.dart';
 import '../vision/frame_source.dart';
 import '../vision/ocr_service.dart';
+import '../vision/camera_frame_encoder.dart';
+import '../vision/object_detect_service.dart';
+import '../core/object_labels.dart';
 import 'aiming_coach.dart';
 import 'frame_metrics.dart';
 import 'reading_quality.dart';
@@ -27,7 +31,6 @@ class FramePipeline {
   FramePipeline({
     required this.onResult,
     this.onCue,
-    this.onLanguageDetected,
     CueLanguage language = CueLanguage.english,
   }) : _language = language; // ignore: prefer_initializing_formals
 
@@ -37,14 +40,6 @@ class FramePipeline {
 
   /// Called when an aiming instruction is issued, for logging or the caption.
   final void Function(AimingCue cue)? onCue;
-
-  /// Called when the pipeline detects a script that differs from the current
-  /// language setting.
-  ///
-  /// The callback must switch voice output and save the preference, then
-  /// return true. Returning false tells the pipeline to stay on the old
-  /// script, which is what happens when the phone has no Hindi voice.
-  final Future<bool> Function(CueLanguage detected)? onLanguageDetected;
 
   CueLanguage _language;
 
@@ -109,10 +104,26 @@ class FramePipeline {
   /// recogniser found nothing. Prevents a wasted second OCR pass every frame.
   DateTime? _lastAutoDetectAt;
 
+  /// Set once the user (or the saved setting) has been told the chosen
+  /// script's voice is missing. Silence beats repeating the same warning.
+  bool _voiceMissingAnnounced = false;
+
   /// When the user chose a language explicitly. Auto-detection stays quiet for
   /// a while afterwards, so saying "English" is not immediately undone by the
   /// page still being in Hindi.
   DateTime? _manualLanguageAt;
+
+  /// Minimum gap between object-detection passes in Object mode.
+  static const Duration _objectMinGap = Duration(seconds: 2);
+
+  /// When the object mode last analysed a frame.
+  DateTime _lastObjectAt = DateTime.fromMillisecondsSinceEpoch(0);
+
+  /// The object names Cue most recently spoke, for deduplication.
+  List<String> _lastObjects = const <String>[];
+
+  /// When objects were last announced, so the same scene is not repeated.
+  DateTime? _lastObjectSpokenAt;
 
   /// What the user last told Cue to look for. Text is the only built handler.
   Interpretation _interpretation = Interpretation.text;
@@ -133,6 +144,9 @@ class FramePipeline {
     _lastNotTextAt = null;
     _lastAttempt = DateTime.fromMillisecondsSinceEpoch(0);
     _lastOcr = DateTime.fromMillisecondsSinceEpoch(0);
+    _lastObjectAt = DateTime.fromMillisecondsSinceEpoch(0);
+    _lastObjects = const <String>[];
+    _lastObjectSpokenAt = null;
   }
 
   /// Switches the OCR script and clears every frame-to-frame gate.
@@ -174,10 +188,38 @@ class FramePipeline {
     _lastOcr = DateTime.fromMillisecondsSinceEpoch(0);
     _lastSpokenAt = null;
     _lastAutoDetectAt = null;
+    _lastObjectAt = DateTime.fromMillisecondsSinceEpoch(0);
+    _lastObjects = const <String>[];
+    _lastObjectSpokenAt = null;
   }
 
   Future<void> _handle(CameraFrame frame) async {
     if (_busy) return;
+
+    final generation = _generation;
+
+    // Object mode: the camera feeds YOLO instead of the text recogniser.
+    if (_interpretation == Interpretation.object) {
+      final now = DateTime.now();
+      final manual = _manualRequested;
+      _manualRequested = false;
+
+      final canNarrate =
+          !AudioBus.instance.hasReading &&
+          !AudioBus.instance.speaking.value &&
+          !AudioBus.instance.isMuted;
+      final due = now.difference(_lastObjectAt) >= _objectMinGap;
+
+      if (!manual && (!due || !canNarrate)) return;
+
+      _busy = true;
+      try {
+        await _detectObjects(frame, manual: manual, generation: generation);
+      } finally {
+        if (generation == _generation) _busy = false;
+      }
+      return;
+    }
 
     // Unbuilt interpretations do not touch the camera or the recogniser. A
     // manual read still gets an answer, because the user asked for one; a
@@ -193,8 +235,6 @@ class FramePipeline {
     final now = DateTime.now();
     if (now.difference(_lastAttempt) < _minFrameGap) return;
     _lastAttempt = now;
-
-    final generation = _generation;
     final metrics = _sampler.sample(frame.image);
     final manual = _manualRequested;
     _manualRequested = false;
@@ -224,6 +264,9 @@ class FramePipeline {
         frame.deviceOrientation,
       );
       final watch = Stopwatch()..start();
+      // The app's language is the saved preference. The script being read may
+      // differ from this for one frame; that does not change the app.
+      CueLanguage readerLanguage = _language;
       OcrRead read = await OcrService.instance.readLiveFrame(
         nv21: frame.nv21,
         width: frame.image.width,
@@ -273,12 +316,22 @@ class FramePipeline {
 
         if (otherRead.text.trim().isNotEmpty &&
             looksLikeText(speakable(otherRead.text))) {
-          final switched = await onLanguageDetected?.call(other) ?? false;
-          if (switched) {
+          final previousVoice = TtsService.instance.language;
+          if (await _ensureReadingVoice(other)) {
             if (kDebugMode) {
               debugPrint('live: auto-detected ${other.label} script');
             }
-            _language = other;
+            if (previousVoice != other) {
+              unawaited(
+                AudioBus.instance.say(
+                  other.isHindi
+                      ? _strings.hindiDetected
+                      : _strings.englishDetected,
+                  priority: SpeechPriority.navigation,
+                ),
+              );
+            }
+            readerLanguage = other;
             read = otherRead;
           }
         }
@@ -286,6 +339,12 @@ class FramePipeline {
       // The switch itself is awaited, so the camera may have stopped while we
       // waited for the voice. Do not speak from a superseded session.
       if (generation != _generation) return;
+
+      if (read.text.trim().isNotEmpty) {
+        final voiceReady = await _ensureReadingVoice(readerLanguage);
+        if (!voiceReady) return; // Voice missing: said once, not guessed.
+        if (generation != _generation) return;
+      }
 
       final text = speakable(read.text);
       final quality = ReadingQuality.of(text, read.confidence);
@@ -361,6 +420,7 @@ class FramePipeline {
             text,
             force: manual,
             uncertain: uncertain,
+            readerLanguage: readerLanguage,
           );
           if (spoken) {
             _lastSpokenAt = DateTime.now();
@@ -369,7 +429,13 @@ class FramePipeline {
                 'live: speak chars=${text.length} manual=$manual tier=${tier.name}',
               );
             }
-            onResult(AudioBus.labelReading(text, uncertain: uncertain));
+            onResult(
+              AudioBus.labelReading(
+                text,
+                uncertain: uncertain,
+                language: readerLanguage,
+              ),
+            );
             unawaited(
               uncertain
                   ? Feedback.instance.notSure()
@@ -410,6 +476,96 @@ class FramePipeline {
       // must not unlock a newer one that is still running.
       if (generation == _generation) _busy = false;
     }
+  }
+
+  /// Runs YOLO on one frame and, if useful, speaks the objects it finds.
+  ///
+  /// Live narration is throttled to [_objectMinGap]. Manual double-tap always
+  /// answers, including with "I cannot see any object clearly".
+  Future<void> _detectObjects(
+    CameraFrame frame, {
+    required bool manual,
+    required int generation,
+  }) async {
+    _lastObjectAt = DateTime.now();
+
+    final rotation = rotationDegrees(
+      frame.description,
+      frame.deviceOrientation,
+    );
+    final jpeg = cameraFrameToJpeg(frame, rotation);
+    if (jpeg.isEmpty) return;
+
+    final names = await ObjectDetectService.instance.detect(jpeg);
+    if (generation != _generation) return;
+
+    final hindi = _language.isHindi;
+    final message = names.isEmpty
+        ? null
+        : objectAnnouncement(names, hindi: hindi);
+
+    if (names.isEmpty) {
+      if (!manual) return;
+      _lastObjects = const <String>[];
+      final text = noObjectsMessage(hindi: hindi);
+      onResult(text);
+      unawaited(
+        AudioBus.instance.say(text, priority: SpeechPriority.navigation),
+      );
+      return;
+    }
+
+    final now = DateTime.now();
+    final sameSet =
+        _lastObjects.length == names.length &&
+        _lastObjects.every(names.contains);
+    final spokeRecently =
+        _lastObjectSpokenAt != null &&
+        now.difference(_lastObjectSpokenAt!) < const Duration(seconds: 5);
+
+    if (!manual && sameSet && spokeRecently) return;
+
+    _lastObjects = List<String>.unmodifiable(names);
+    _lastObjectSpokenAt = now;
+
+    if (kDebugMode) {
+      debugPrint('live: objects ${names.join(', ')} manual=$manual');
+    }
+
+    onResult(message!);
+    unawaited(
+      AudioBus.instance.say(message, priority: SpeechPriority.navigation),
+    );
+  }
+
+  /// Makes sure the voice matches the script being read.
+  ///
+  /// The app's language and saved preference are not touched; this only
+  /// changes the engine so Hindi text is not read with the English voice.
+  Future<bool> _ensureReadingVoice(CueLanguage language) async {
+    if (TtsService.instance.language == language &&
+        TtsService.instance.languageAvailable) {
+      return true;
+    }
+
+    final ready = await TtsService.instance.setLanguage(language);
+    if (ready) {
+      _voiceMissingAnnounced = false;
+      return true;
+    }
+
+    if (!_voiceMissingAnnounced) {
+      _voiceMissingAnnounced = true;
+      unawaited(
+        AudioBus.instance.say(
+          language.isHindi
+              ? _strings.hindiVoiceMissing
+              : _strings.englishVoiceMissing,
+          priority: SpeechPriority.alert,
+        ),
+      );
+    }
+    return false;
   }
 
   /// Answers a manual read in a mode whose handler has not been built.

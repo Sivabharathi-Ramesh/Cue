@@ -78,5 +78,6 @@ enum Interpretation {
   Interpretation get previous =>
       values[(index - 1 + values.length) % values.length];
 
-  bool get isBuilt => this == Interpretation.text;
+  bool get isBuilt =>
+      this == Interpretation.text || this == Interpretation.object;
 }

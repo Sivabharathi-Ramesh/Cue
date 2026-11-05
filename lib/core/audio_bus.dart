@@ -72,6 +72,10 @@ class AudioBus {
   /// it interrupted.
   int _playToken = 0;
 
+  /// The language whose script was last read, when it differs from the saved
+  /// app language. Used only for deciding the language of uncertainty preambles.
+  CueLanguage? _sessionLanguage;
+
   bool _readingActive = false;
   bool _readingPaused = false;
   bool _sessionUncertain = false;
@@ -117,10 +121,15 @@ class AudioBus {
   /// The doubt must be the first thing said: a blind user cannot scan the
   /// face of the reader for hesitation, and a late "maybe" does not undo a
   /// wrong sentence spoken first.
-  static String labelReading(String text, {bool uncertain = false}) {
+  static String labelReading(
+    String text, {
+    bool uncertain = false,
+    CueLanguage? language,
+  }) {
     final clean = text.trim();
     if (!uncertain) return clean;
-    final prefix = LanguageService.instance.language.value.isHindi
+    final speaking = language ?? LanguageService.instance.language.value;
+    final prefix = speaking.isHindi
         ? 'मुझे यकीन नहीं है। मुझे लगता है यह लिखा है: '
         : 'I am not sure. I think it says: ';
     return '$prefix$clean';
@@ -156,6 +165,7 @@ class AudioBus {
     bool force = false,
     bool uncertain = false,
     SpeechPriority priority = SpeechPriority.answer,
+    CueLanguage? readerLanguage,
   }) {
     if (_muted) return false;
     final clean = text.trim();
@@ -174,7 +184,13 @@ class AudioBus {
     if (sentences.isEmpty) return false;
 
     _lastResult = clean;
-    _lastSpoken = labelReading(clean, uncertain: uncertain);
+    _sessionLanguage =
+        readerLanguage ?? LanguageService.instance.language.value;
+    _lastSpoken = labelReading(
+      clean,
+      uncertain: uncertain,
+      language: _sessionLanguage,
+    );
     _startReading(sentences, uncertain: uncertain, priority: priority);
     return true;
   }
@@ -270,6 +286,8 @@ class AudioBus {
     _index = 0;
     _readingActive = false;
     _readingPaused = false;
+    _sessionUncertain = false;
+    _sessionLanguage = null;
     _playToken++;
   }
 
@@ -348,7 +366,11 @@ class AudioBus {
   String _speechFor(int index) {
     final sentence = _sentences[index];
     if (index == 0 && _sessionUncertain) {
-      return labelReading(sentence, uncertain: true);
+      return labelReading(
+        sentence,
+        uncertain: true,
+        language: _sessionLanguage,
+      );
     }
     return sentence;
   }

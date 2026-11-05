@@ -27,6 +27,9 @@ dependencies:
   camera: 0.12.2
   google_mlkit_text_recognition: 0.17.1
   google_mlkit_image_labeling: 0.16.1
+  # Object detection in Object mode. The bundled model is AGPL-licensed; do
+  # not ship a closed-source commercial APK without resolving that licence.
+  ultralytics_yolo: 0.7.1
 
   # Platform plumbing
   permission_handler: 12.0.1   # 13.x needs compileSdk 37 - do not upgrade
@@ -45,3 +48,5 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/models/yolo26n_w8a32.tflite

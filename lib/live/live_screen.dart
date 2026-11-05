@@ -19,6 +19,7 @@ import '../core/voice_command_service.dart';
 import '../core/voice_intro.dart';
 import '../vision/frame_source.dart';
 import '../vision/ocr_service.dart';
+import '../vision/object_detect_service.dart';
 import 'frame_pipeline.dart';
 import 'scene_router.dart';
 
@@ -45,12 +46,6 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
   bool _starting = false;
   int _startToken = 0;
   bool _pausedByUser = false;
-
-  /// Whether the "no Hindi voice" warning has already been spoken this session.
-  ///
-  /// Auto-detection retries every few seconds while a Hindi page is in view.
-  /// Without this flag the same warning would interrupt the user repeatedly.
-  bool _voiceMissingAnnounced = false;
 
   /// Whether press-to-talk is currently listening.
   bool _listening = false;
@@ -92,11 +87,7 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     final language = LanguageService.instance.language.value;
-    _pipeline = FramePipeline(
-      onResult: _onResult,
-      onLanguageDetected: _onLanguageAutoDetected,
-      language: language,
-    );
+    _pipeline = FramePipeline(onResult: _onResult, language: language);
     unawaited(Feedback.instance.init());
     _keyChannel.setMethodCallHandler(_onHardwareKey);
     unawaited(_prepareAndStart());
@@ -168,6 +159,7 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
     // Load the OCR model while the camera opens, so the first frame does not
     // pay the model-start cost inside FR-03's two-second budget.
     unawaited(OcrService.instance.warmUp(voiceLanguage));
+    unawaited(ObjectDetectService.instance.warmUp());
     unawaited(_start());
   }
 
@@ -437,6 +429,8 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
     await AudioBus.instance.say(
       next == Interpretation.text
           ? _strings.textModeAnnouncement
+          : next == Interpretation.object
+          ? _strings.objectModeAnnouncement
           : _strings.notBuilt(_strings.modeName(next.label)),
       priority: SpeechPriority.navigation,
     );
@@ -551,7 +545,6 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
       return;
     }
 
-    _voiceMissingAnnounced = false;
     await LanguageService.instance.set(language);
     _pipeline.setLanguage(language);
     AudioBus.instance.forgetLastResult();
@@ -566,47 +559,6 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
       language.isHindi ? strings.switchedToHindi : strings.switchedToEnglish,
       priority: SpeechPriority.navigation,
     );
-  }
-
-  /// Called by the pipeline when the camera detects a different script.
-  ///
-  /// The pipeline awaits this before speaking, so the new voice is in place for
-  /// the very first Hindi sentence. Returning false keeps the old script; that
-  /// is what happens when the phone has no Hindi voice.
-  Future<bool> _onLanguageAutoDetected(CueLanguage detected) async {
-    if (detected == _language) return true;
-
-    await AudioBus.instance.stop();
-    final voiceReady = await TtsService.instance.setLanguage(detected);
-    if (!voiceReady) {
-      if (!_voiceMissingAnnounced) {
-        _voiceMissingAnnounced = true;
-        await AudioBus.instance.say(
-          detected.isHindi
-              ? _strings.hindiVoiceMissing
-              : _strings.englishVoiceMissing,
-          priority: SpeechPriority.alert,
-        );
-      }
-      return false;
-    }
-
-    _voiceMissingAnnounced = false;
-    // Say the announcement in the language the user was in, not the one Cue
-    // is becoming. A Hindi sentence heard by a user who chose English is noise.
-    final outgoing = CueStrings(LanguageService.instance.language.value);
-    await LanguageService.instance.set(detected);
-    AudioBus.instance.forgetLastResult();
-    unawaited(OcrService.instance.warmUp(detected));
-    if (mounted) setState(() {});
-
-    unawaited(
-      AudioBus.instance.say(
-        detected.isHindi ? outgoing.hindiDetected : outgoing.englishDetected,
-        priority: SpeechPriority.navigation,
-      ),
-    );
-    return true;
   }
 
   void _toggleLanguage() {

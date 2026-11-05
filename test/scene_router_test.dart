@@ -78,7 +78,7 @@ void main() {
 
     test('only text has a built handler in this build', () {
       expect(Interpretation.text.isBuilt, isTrue);
-      expect(Interpretation.object.isBuilt, isFalse);
+      expect(Interpretation.object.isBuilt, isTrue);
       expect(Interpretation.banknote.isBuilt, isFalse);
       expect(Interpretation.screen.isBuilt, isFalse);
     });

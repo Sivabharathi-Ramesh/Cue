@@ -86,13 +86,15 @@ class CueStrings {
       ? 'नियंत्रण। आवाज़ कमांड के लिए वॉल्यूम डाउन बटन आधा सेकंड दबाए रखें, '
             'बोलें, फिर छोड़ें। पढ़ो, रुको, दोहराओ, या मदद कहें। अगला, '
             'पिछला, शुरू से, ठहरो, जारी रखो, धीरे, तेज़, या मोड भी कह सकते '
-            'हैं। दो बार टैप करने से अभी पढ़ता है। मोड बदलने के लिए बगल में '
-            'स्वाइप करें।'
+            'हैं। वस्तु मोड देखी चीज़ों के नाम बताता है; नोट और स्क्रीन मोड '
+            'अभी नहीं हैं। दो बार टैप करने से अभी पढ़ता है। मोड बदलने के '
+            'लिए बगल में स्वाइप करें।'
       : 'Controls. Hold the volume down button for half a second, speak, then '
             'let go. Say read, stop, repeat, or help. You can also say next, '
             'back, start over, pause, resume, slower, faster, or a mode. '
-            'Double tap reads now. Swipe sideways changes mode. The actions '
-            'menu has the same controls.';
+            'Object mode names what it sees; banknote and screen are not built '
+            'yet. Double tap reads now. Swipe sideways changes mode. The '
+            'actions menu has the same controls.';
 
   String get helpHowTo => _hi
       ? 'आवाज़ कमांड के लिए वॉल्यूम डाउन बटन आधा सेकंड दबाए रखें, बोलें, फिर '
@@ -168,12 +170,12 @@ class CueStrings {
   String get switchedToEnglish => 'Now reading in English.';
 
   String get hindiDetected => _hi
-      ? 'हिंदी पाठ मिला। हिंदी में बदल रहा हूँ।'
-      : 'Hindi text detected. Switching to Hindi.';
+      ? 'हिंदी पाठ मिला। हिंदी आवाज़ से पढ़ रहा हूँ।'
+      : 'Hindi text detected. Reading with Hindi voice.';
 
   String get englishDetected => _hi
-      ? 'अंग्रेज़ी पाठ मिला। अंग्रेज़ी में बदल रहा हूँ।'
-      : 'English text detected. Switching to English.';
+      ? 'अंग्रेज़ी पाठ मिला। अंग्रेज़ी आवाज़ से पढ़ रहा हूँ।'
+      : 'English text detected. Reading with English voice.';
 
   String get alreadyHindi => 'पहले से हिंदी में हूँ।';
 
@@ -188,6 +190,10 @@ class CueStrings {
       : 'The English voice is unavailable. Staying in English.';
 
   // --- Modes ----------------------------------------------------------------
+
+  String get objectModeAnnouncement => _hi
+      ? 'वस्तु मोड। किसी वस्तु पर कैमरा रखें। क्यू उसका नाम बताएगा।'
+      : 'Object mode. Point at an object and Cue will name it.';
 
   String get textModeAnnouncement => _hi
       ? 'पाठ मोड। छपे हुए पाठ पर कैमरा रखें।'
