@@ -8,6 +8,8 @@
     <!-- Microphone: only while the user holds the voice-command gesture.
          Cue does not record or store audio. -->
     <uses-permission android:name="android.permission.RECORD_AUDIO"/>
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
 
     <!-- required="false" so the app still installs on a device with no
          autofocus. The app reports that limits the demo, it does not crash. -->

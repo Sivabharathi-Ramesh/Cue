@@ -1,23 +1,39 @@
 import 'dart:async';
 import 'dart:typed_data';
+import 'dart:ui' as ui;
+import 'dart:ui' show Rect;
 
+import 'package:flutter/foundation.dart' show kDebugMode, debugPrint;
 import 'package:ultralytics_yolo/ultralytics_yolo.dart';
+
+import 'detected_object.dart';
+import 'object_colour.dart';
 
 /// On-device object detection.
 ///
-/// The model is the nano YOLO 26 detector, bundled in assets. It never
-/// leaves the phone, matching Cue's privacy promise. It recognises the 80
-/// COCO classes; it cannot name things it was never shown.
+/// The model is a YOLOE-26s detector exported for Cue's everyday vocabulary.
+/// It never leaves the phone, matching Cue's privacy promise. It recognises a
+/// curated set of common household/everyday classes; it cannot name things
+/// outside that set.
 class ObjectDetectService {
   ObjectDetectService._();
 
   static final ObjectDetectService instance = ObjectDetectService._();
 
   /// Bundled model path.
-  static const String modelPath = 'assets/models/yolo26n_w8a32.tflite';
+  static const String modelPath =
+      'assets/models/yoloe26s_everyday_w8a32.tflite';
+
+  /// Below this, a box is almost always background clutter.
+  static const double _minArea = 0.008;
+
+  /// A detection that fills nearly the whole frame is usually a wall, a hand
+  /// or a reflection, not the object the user is pointing at.
+  static const double _maxArea = 0.94;
 
   YOLO? _yolo;
   Future<void>? _loading;
+  bool _usingGpu = true;
 
   /// Loads the model before the object mode is needed.
   Future<void> warmUp() => _ensureLoaded().then((_) {});
@@ -27,57 +43,201 @@ class ObjectDetectService {
   }
 
   Future<void> _load() async {
+    // Quantised models do not always run on the GPU delegate. Try it, and fall
+    // back to the CPU rather than leaving object mode silently blind.
+    try {
+      _yolo = await _create(useGpu: true);
+      _usingGpu = true;
+    } catch (_) {
+      _yolo = await _create(useGpu: false);
+      _usingGpu = false;
+    }
+  }
+
+  Future<YOLO> _create({required bool useGpu}) async {
     final yolo = YOLO(
       modelPath: modelPath,
       task: YOLOTask.detect,
-      // A blind user needs the latency before they finish waiting. CPU is
-      // acceptable on this hardware; the plugin falls back automatically.
-      useGpu: true,
+      // A blind user needs the latency before they finish waiting.
+      useGpu: useGpu,
     );
     await yolo.loadModel();
-    _yolo = yolo;
+    if (kDebugMode) debugPrint('live: model loaded gpu=$useGpu');
+    return yolo;
   }
 
   /// Detects objects in one JPEG image.
   ///
-  /// Returns class names, most confident first, with repeats removed. The
-  /// list is limited to [maxObjects]; more than three objects is noise for
-  /// someone listening, not help.
-  Future<List<String>> detect(
+  /// Returns objects most relevant first, with duplicate labels removed.
+  ///
+  /// Three rules keep the output honest, because a confident-sounding wrong
+  /// answer is worse than silence for a blind user:
+  ///
+  ///  * a high-confidence object is spoken on its own;
+  ///  * lower-confidence objects are only spoken when at least two different
+  ///    classes agree that *something* is there;
+  ///  * boxes that are too small, too large, or the wrong shape for the class
+  ///    are thrown away before anything is said.
+  Future<List<DetectedObject>> detect(
     Uint8List jpeg, {
-    double confidence = 0.45,
     int maxObjects = 3,
+    bool lenient = false,
   }) async {
-    if (jpeg.length < 32) return const <String>[];
+    if (jpeg.length < 32) return const <DetectedObject>[];
     await _ensureLoaded();
 
     try {
-      final raw = await _yolo!.predict(
-        jpeg,
-        confidenceThreshold: confidence,
-        iouThreshold: 0.45,
-      );
-      final detections = (raw['detections'] as List<dynamic>? ?? const [])
+      final raw = await _predict(jpeg);
+      if (kDebugMode) {
+        debugPrint(
+          'live: plugin accel=${raw['accelerator']} '
+          'pre=${raw['preMs']} infer=${raw['inferenceMs']} '
+          'post=${raw['postMs']}',
+        );
+      }
+
+      final rawObjects = (raw['detections'] as List<dynamic>? ?? const [])
           .whereType<Map<dynamic, dynamic>>()
           .map(YOLOResult.fromMap)
+          .map(
+            (result) => DetectedObject(
+              name: result.className.toLowerCase().trim(),
+              confidence: result.confidence,
+              box: result.normalizedBox,
+            ),
+          )
+          .toList();
+      if (kDebugMode && rawObjects.isNotEmpty) {
+        final top = [...rawObjects]
+          ..sort((a, b) => b.confidence.compareTo(a.confidence));
+        debugPrint(
+          'live: raw ${rawObjects.length} '
+          '${top.take(8).map((o) => '${o.name} ${(o.confidence * 100).round()}').join(', ')}',
+        );
+      }
+
+      final objects = rawObjects.where(_plausible).toList();
+
+      if (objects.isEmpty) return const <DetectedObject>[];
+
+      objects.sort((a, b) => b.confidence.compareTo(a.confidence));
+
+      // Two classes on the same box ("cup" and "bottle" on one dinner table)
+      // are one thing, not two. Keep the more confident label.
+      final unique = <DetectedObject>[];
+      for (final object in objects) {
+        final duplicate = unique.any(
+          (kept) => _iou(kept.box, object.box) >= 0.55,
+        );
+        if (!duplicate) unique.add(object);
+      }
+
+      final strong = unique
+          .where((object) => _isStrong(object, lenient))
+          .toList();
+      final moderate = unique
+          .where((object) => object.confidence >= (lenient ? 0.40 : 0.45))
           .toList();
 
-      detections.sort((a, b) => b.confidence.compareTo(a.confidence));
+      final chosen = strong.isNotEmpty
+          ? strong
+          : (moderate.length >= 2 ? moderate : const <DetectedObject>[]);
 
-      final seen = <String>{};
-      final names = <String>[];
-      for (final detection in detections) {
-        final name = detection.className.toLowerCase().trim();
-        if (name.isEmpty || seen.contains(name)) continue;
-        seen.add(name);
-        names.add(name);
-        if (names.length >= maxObjects) break;
-      }
-      return names;
+      if (chosen.isEmpty) return const <DetectedObject>[];
+
+      // Nearest and most central first: that is what the user is walking
+      // towards, not whatever happened to score highest in a corner.
+      chosen.sort((a, b) => _relevance(b).compareTo(_relevance(a)));
+      final nearest = chosen.take(maxObjects).toList(growable: false);
+      return await _withColours(nearest, jpeg);
     } catch (_) {
       // A failed detection is not a reason to disrupt the session; the next
       // pass gets another chance.
-      return const <String>[];
+      return const <DetectedObject>[];
     }
+  }
+
+  /// Attaches the colour sampled from each box.
+  ///
+  /// The JPEG is decoded once for all boxes. Colour is an extra, never a
+  /// precondition: a decode failure returns the objects exactly as they were.
+  Future<List<DetectedObject>> _withColours(
+    List<DetectedObject> objects,
+    Uint8List jpeg,
+  ) async {
+    if (objects.isEmpty) return objects;
+
+    ui.Image? image;
+    try {
+      final codec = await ui.instantiateImageCodec(jpeg);
+      final frame = await codec.getNextFrame();
+      image = frame.image;
+      final width = image.width;
+      final height = image.height;
+      final data = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
+      if (data == null) return objects;
+      final rgba = data.buffer.asUint8List();
+
+      return <DetectedObject>[
+        for (final object in objects)
+          object.withColour(
+            dominantColourInBox(rgba, width, height, object.box),
+          ),
+      ];
+    } catch (_) {
+      return objects;
+    } finally {
+      image?.dispose();
+    }
+  }
+
+  /// Whether a detection is strong enough to speak on its own.
+  bool _isStrong(DetectedObject object, bool lenient) {
+    return isConfidentDetection(object, lenient: lenient);
+  }
+
+  /// Runs inference, retreating to the CPU once if the GPU delegate accepts
+  /// the model at load time but fails on the first real image.
+  Future<Map<String, dynamic>> _predict(Uint8List jpeg) async {
+    try {
+      return await _yolo!.predict(
+        jpeg,
+        confidenceThreshold: 0.40,
+        iouThreshold: 0.45,
+      );
+    } catch (_) {
+      if (!_usingGpu) rethrow;
+      _yolo = await _create(useGpu: false);
+      _usingGpu = false;
+      return _yolo!.predict(
+        jpeg,
+        confidenceThreshold: 0.40,
+        iouThreshold: 0.45,
+      );
+    }
+  }
+
+  bool _plausible(DetectedObject object) {
+    if (object.name.isEmpty) return false;
+    if (!hasPlausibleLargeClassArea(object)) return false;
+    final area = object.area;
+    if (area < _minArea || area > _maxArea) return false;
+    if (object.isTallClass && !object.hasTallShape) return false;
+    return true;
+  }
+
+  double _relevance(DetectedObject object) {
+    final centre = (object.box.center.dx - 0.5).abs() * 2; // 0 centre, 1 edge
+    final centred = 1.0 - centre;
+    final size = object.area.clamp(0.0, 1.0);
+    return object.confidence + 0.12 * centred + 0.06 * size;
+  }
+
+  double _iou(Rect a, Rect b) {
+    final intersection = a.intersect(b);
+    if (intersection.width <= 0 || intersection.height <= 0) return 0;
+    final intersectionArea = intersection.width * intersection.height;
+    final union = a.width * a.height + b.width * b.height - intersectionArea;
+    return union <= 0 ? 0 : intersectionArea / union;
   }
 }

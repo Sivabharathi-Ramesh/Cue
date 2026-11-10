@@ -7,12 +7,17 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart' hide Feedback;
 import 'package:flutter/semantics.dart';
 import 'package:flutter/services.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 import '../core/audio_bus.dart';
 import '../core/cue_language.dart';
 import '../core/cue_strings.dart';
+import '../core/device_sensors.dart';
 import '../core/feedback.dart';
 import '../core/keep_awake.dart';
+import '../core/location_service.dart';
+import '../core/motion_monitor.dart';
+import '../core/spoken_facts.dart';
 import '../core/tts_service.dart';
 import '../core/voice_command.dart';
 import '../core/voice_command_service.dart';
@@ -49,6 +54,47 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
 
   /// Whether press-to-talk is currently listening.
   bool _listening = false;
+
+  // --- Environment sensors --------------------------------------------------
+
+  /// Light below this many lux, for this long, turns the torch on.
+  static const double _darkLux = 12;
+  static const Duration _darkDelay = Duration(seconds: 2);
+
+  /// Light above this, for longer, turns the torch off again.
+  /// Office-lit rooms are usually well above this, so a value of 120 was
+  /// unreachable for a lot of users.
+  static const double _brightLux = 50;
+  static const Duration _brightDelay = Duration(seconds: 3);
+
+  /// A torch left on is a battery drain and a public nuisance in a dark room,
+  /// and the light sensor cannot see that a torch is needed (the torch itself
+  /// raises the reading). It is therefore a short flash, not a lamp: the user
+  /// can always say "torch on" again.
+  static const Duration _torchMaxOn = Duration(seconds: 60);
+
+  StreamSubscription<double>? _lightSubscription;
+  StreamSubscription<bool>? _proximitySubscription;
+  DateTime? _darkSince;
+  DateTime? _brightSince;
+  DateTime _lastLightDiagAt = DateTime.fromMillisecondsSinceEpoch(0);
+  bool _torchOn = false;
+  bool _torchAnnounced = false;
+  DateTime? _torchOnSince;
+
+  /// Whether the talk key is down, so a failed listen can retry while the user
+  /// is still holding it.
+  bool _talkKeyHeld = false;
+
+  /// Set after the microphone is refused, so the explanation is said once.
+  bool _micHintShown = false;
+
+  /// True after the torch ran its full time in a room that stayed dark.
+  ///
+  /// The torch raises the light reading, so "dark" and "torch on" can be true
+  /// at the same time. Without this flag Cue would switch the torch on again
+  /// two seconds after timing out, forever.
+  bool _torchTimedOut = false;
 
   /// Bumped whenever a listen is cancelled, so a late result cannot act after
   /// the app has paused or a newer listen has started.
@@ -90,6 +136,7 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
     _pipeline = FramePipeline(onResult: _onResult, language: language);
     unawaited(Feedback.instance.init());
     _keyChannel.setMethodCallHandler(_onHardwareKey);
+    unawaited(_startSensors());
     unawaited(_prepareAndStart());
 
     // FR-04 / section 7: a soft tick every two seconds while searching.
@@ -110,6 +157,10 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
   void dispose() {
     _searchTick?.cancel();
     _previewTimer?.cancel();
+    _lightSubscription?.cancel();
+    _proximitySubscription?.cancel();
+    unawaited(MotionMonitor.instance.stop());
+    unawaited(DeviceSensors.instance.stop());
     WidgetsBinding.instance.removeObserver(this);
     _startToken++;
     _listenToken++;
@@ -125,11 +176,15 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.paused) {
+      unawaited(MotionMonitor.instance.stop());
+      unawaited(DeviceSensors.instance.stop());
       if (_phase != LivePhase.paused) {
         _pausedByUser = false;
         unawaited(_pause(announce: false));
       }
     } else if (state == AppLifecycleState.resumed) {
+      unawaited(MotionMonitor.instance.start());
+      unawaited(DeviceSensors.instance.start());
       if (_phase == LivePhase.paused && !_pausedByUser) {
         unawaited(_start());
       }
@@ -144,6 +199,228 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
   /// English engine, which sounds like nonsense and cannot be debugged by a
   /// blind user. Falling back here also switches OCR and speech recognition,
   /// so all three stay in one language.
+  /// Starts the motion, light and proximity sensors.
+  ///
+  /// Safe to call again after a pause: the Dart subscriptions are created once
+  /// and the native listeners are restarted by [DeviceSensors.start].
+  Future<void> _startSensors() async {
+    await MotionMonitor.instance.start();
+    await DeviceSensors.instance.start();
+
+    _lightSubscription ??= DeviceSensors.instance.light.listen(_onLight);
+    _proximitySubscription ??= DeviceSensors.instance.proximityNear.listen(
+      _onProximity,
+    );
+
+    if (kDebugMode) {
+      final depth = await DeviceSensors.instance.depthAvailable();
+      debugPrint(
+        'sensors: depth output ${depth ? 'available' : 'not available'}',
+      );
+    }
+  }
+
+  /// Applies a torch request spoken as a voice command.
+  Future<void> _torchFromVoice(bool on) async {
+    _torchTimedOut = false;
+    await _setTorch(on);
+    if (!mounted) return;
+    unawaited(
+      AudioBus.instance.say(
+        on ? _strings.torchTurnedOn : _strings.torchTurnedOff,
+        priority: SpeechPriority.navigation,
+      ),
+    );
+  }
+
+  /// Speaks the current time, because the phone already knows it.
+  Future<void> _sayTime() async {
+    await AudioBus.instance.say(
+      spokenTime(DateTime.now(), hindi: _language.isHindi),
+      priority: SpeechPriority.answer,
+    );
+  }
+
+  /// Speaks today's date.
+  Future<void> _sayDate() async {
+    await AudioBus.instance.say(
+      spokenDate(DateTime.now(), hindi: _language.isHindi),
+      priority: SpeechPriority.answer,
+    );
+  }
+
+  /// Asks the phone for a position and speaks it.
+  ///
+  /// A fix can take a few seconds, so the user is told the wait is deliberate.
+  /// The camera keeps running meanwhile; only the voice is busy.
+  Future<void> _sayLocation() async {
+    final hindi = _language.isHindi;
+
+    // The phone-wide switch comes first. If it is off, no permission or
+    // provider can produce a fix, and telling the user to move near a window
+    // would be untrue. Say what is wrong and take them to the switch.
+    final servicesOn = await LocationService.instance.servicesEnabled();
+    if (!mounted) return;
+    // Field diagnostics: "it said nothing" is otherwise impossible to check.
+    debugPrint('location: services=$servicesOn');
+    if (!servicesOn) {
+      debugPrint('location: problem=servicesOff fix=false');
+      await AudioBus.instance.say(
+        spokenLocation(
+          const LocationResult(null, LocationProblem.servicesOff),
+          hindi: hindi,
+        ),
+        priority: SpeechPriority.answer,
+      );
+      if (!mounted) return;
+      await LocationService.instance.openLocationSettings();
+      return;
+    }
+
+    // The system permission dialog is silent, so a blind user would otherwise
+    // get an unexplained interruption. Explain first, then let the dialog
+    // appear.
+    final needsPermission = await LocationService.instance.needsPermission();
+    if (!mounted) return;
+    if (needsPermission) {
+      await AudioBus.instance.say(
+        hindi
+            ? 'लोकेशन के लिए अनुमति चाहिए। अगली स्क्रीन पर अनुमति दें चुनें।'
+            : 'Location needs permission. On the next screen, choose Allow.',
+        priority: SpeechPriority.answer,
+      );
+      if (!mounted) return;
+    }
+
+    await AudioBus.instance.say(
+      hindi ? 'लोकेशन देख रहा हूँ।' : 'Finding your location.',
+      priority: SpeechPriority.answer,
+    );
+    if (!mounted) return;
+
+    final result = await LocationService.instance.current();
+    if (!mounted) return;
+    debugPrint(
+      'location: problem=${result.problem.name} fix=${result.fix != null}',
+    );
+    await AudioBus.instance.say(
+      spokenLocation(result, hindi: hindi),
+      priority: SpeechPriority.answer,
+    );
+
+    // A blocked permission can only be fixed in Cue's settings page, so open
+    // it rather than leaving the user to find it.
+    if (result.problem == LocationProblem.permissionBlocked && mounted) {
+      await LocationService.instance.openAppSettingsPage();
+    }
+  }
+
+  /// Opens the screen where the phone's Location switch lives.
+  Future<void> _openLocationSettings() async {
+    await AudioBus.instance.say(
+      _language.isHindi
+          ? 'लोकेशन सेटिंग खोल रहा हूँ।'
+          : 'Opening location settings.',
+      priority: SpeechPriority.answer,
+    );
+    if (!mounted) return;
+    await LocationService.instance.openLocationSettings();
+  }
+
+  /// Turns the torch on in a dark room and off again in daylight.
+  ///
+  /// The camera can only report brightness after a frame; the light sensor
+  /// knows before the first frame, and does not care what the camera is
+  /// pointed at.
+  void _onLight(double lux) {
+    if (!mounted || _phase != LivePhase.searching) return;
+    final now = DateTime.now();
+    if (kDebugMode &&
+        now.difference(_lastLightDiagAt) > const Duration(seconds: 3)) {
+      _lastLightDiagAt = now;
+      debugPrint('live: light ${lux.toStringAsFixed(1)} lux torch=$_torchOn');
+    }
+
+    if (_torchOn &&
+        _torchOnSince != null &&
+        now.difference(_torchOnSince!) >= _torchMaxOn) {
+      _torchTimedOut = true;
+      unawaited(_setTorch(false, autoOff: true));
+      return;
+    }
+
+    if (lux < _darkLux) {
+      _brightSince = null;
+      _darkSince ??= now;
+      if (!_torchOn &&
+          !_torchTimedOut &&
+          now.difference(_darkSince!) >= _darkDelay) {
+        unawaited(_setTorch(true, announce: !_torchAnnounced));
+      }
+      return;
+    }
+
+    _darkSince = null;
+    // A room that is actually lit clears the timeout, so the next dark room
+    // can have its own flash.
+    if (lux > _brightLux) _torchTimedOut = false;
+    if (_torchOn && lux > _brightLux) {
+      _brightSince ??= now;
+      if (now.difference(_brightSince!) >= _brightDelay) {
+        unawaited(_setTorch(false));
+      }
+    } else {
+      _brightSince = null;
+    }
+  }
+
+  /// Silences Cue while the phone is covered, and reopens its voice after.
+  void _onProximity(bool near) {
+    if (!mounted || _listening) return;
+    if (kDebugMode) {
+      debugPrint('live: proximity near=$near');
+    }
+    if (near) {
+      AudioBus.instance.mute();
+    } else {
+      AudioBus.instance.unmute();
+    }
+  }
+
+  Future<void> _setTorch(
+    bool on, {
+    bool announce = false,
+    bool autoOff = false,
+  }) async {
+    if (_torchOn == on) return;
+    _torchOn = on;
+    _torchOnSince = on ? DateTime.now() : null;
+    await _source.setTorch(on);
+    if (!mounted) return;
+
+    if (!on) {
+      _torchAnnounced = false;
+      if (autoOff) {
+        unawaited(
+          AudioBus.instance.say(
+            _strings.torchAutoOff,
+            priority: SpeechPriority.navigation,
+          ),
+        );
+      }
+      return;
+    }
+    if (announce) {
+      _torchAnnounced = true;
+      unawaited(
+        AudioBus.instance.say(
+          _strings.torchOn,
+          priority: SpeechPriority.navigation,
+        ),
+      );
+    }
+  }
+
   Future<void> _prepareAndStart() async {
     final voiceLanguage = await TtsService.instance.prepareLanguage();
     if (!mounted) return;
@@ -230,6 +507,49 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
     _showPreview();
     unawaited(Feedback.instance.ready());
     unawaited(_announceReady(token));
+    unawaited(_prepareVoice());
+  }
+
+  /// Asks for the microphone and warms the recogniser before the first press.
+  ///
+  /// Without this, the permission dialog only appears after the user has
+  /// already held volume down and started speaking, so the command is lost and
+  /// the screen looks broken. A blind user also cannot read the dialog, so the
+  /// reason is spoken first.
+  Future<void> _prepareVoice() async {
+    final status = await Permission.microphone.status;
+    if (status.isGranted) {
+      await VoiceCommandService.instance.prepare();
+      return;
+    }
+
+    if (status.isPermanentlyDenied) {
+      await _sayMicBlockedOnce();
+      return;
+    }
+
+    if (!mounted) return;
+    await AudioBus.instance.say(
+      _strings.microphoneAsk,
+      priority: SpeechPriority.navigation,
+    );
+
+    final asked = await Permission.microphone.request();
+    if (asked.isGranted) {
+      await VoiceCommandService.instance.prepare();
+      return;
+    }
+    await _sayMicBlockedOnce();
+  }
+
+  /// Explains a refused microphone once per session, not on every start.
+  Future<void> _sayMicBlockedOnce() async {
+    if (_micHintShown) return;
+    _micHintShown = true;
+    await AudioBus.instance.say(
+      _strings.microphoneBlocked,
+      priority: SpeechPriority.navigation,
+    );
   }
 
   /// Shows the preview and the status for a few seconds, then lets them fade.
@@ -279,12 +599,29 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
     _startToken++;
     _starting = false;
     _previewTimer?.cancel();
-    _previewOn = false;
     _cancelVoice();
+
+    // The preview must leave the tree before the controller is disposed.
+    // CameraPreview keeps listening to its controller, so disposing under a
+    // still-mounted preview makes it rebuild and throw.
+    if (mounted && _previewOn) {
+      setState(() => _previewOn = false);
+      await WidgetsBinding.instance.endOfFrame;
+    } else {
+      _previewOn = false;
+    }
 
     await KeepAwake.set(false);
     await AudioBus.instance.stop();
     await _source.stop();
+    // Stopping the camera turns the torch off with it; the bookkeeping has to
+    // agree or a later dark room would never switch it back on.
+    _torchOn = false;
+    _torchAnnounced = false;
+    _torchOnSince = null;
+    _torchTimedOut = false;
+    _darkSince = null;
+    _brightSince = null;
     _pipeline.reset();
 
     if (!mounted) return;
@@ -422,6 +759,8 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
     AudioBus.instance.forgetLastResult();
     _showPreview();
 
+    // One line per mode change is cheap and makes on-device support possible
+    // without a debug build.
     if (kDebugMode) {
       debugPrint('live: interpretation ${next.name}');
     }
@@ -580,13 +919,32 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
 
   /// Handles the native volume-down long press.
   Future<dynamic> _onHardwareKey(MethodCall call) async {
+    debugPrint('voice: key ${call.method}');
     switch (call.method) {
       case 'talkStart':
+        _talkKeyHeld = true;
+        // A press while the previous listen is still ending is the user
+        // retrying. Ignoring it made Cue feel dead for up to a second after a
+        // failed command, and a retry is exactly what a blind user does.
+        if (_listening) _restartVoice();
         unawaited(_listenForCommand());
       case 'talkEnd':
+        _talkKeyHeld = false;
         unawaited(VoiceCommandService.instance.finishListening());
     }
     return null;
+  }
+
+  /// Drops the current listen and makes room for a fresh one.
+  ///
+  /// The token bump is what stops the old attempt's cleanup from unmuting the
+  /// voice or clearing the "Listening" state of the attempt that replaces it.
+  void _restartVoice() {
+    _listenToken++;
+    AudioBus.instance.unmute();
+    _listening = false;
+    if (mounted) setState(() {});
+    unawaited(VoiceCommandService.instance.cancel());
   }
 
   /// Says the "Reading paused" hint once after an action that parked a page.
@@ -609,11 +967,15 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
   Future<void> _listenForCommand() async {
     if (_listening) return;
 
-    // Stop Cue's own voice first, then close the bus. The camera pipeline
-    // keeps analysing while the microphone is open, and an aiming cue or the
-    // next sentence must not be recorded as a command.
-    await AudioBus.instance.stop();
+    // Silence Cue first and keep it silent: if a sentence starts between the
+    // stop and the microphone opening, the recogniser transcribes Cue instead
+    // of the user and acts on its own words.
     AudioBus.instance.mute();
+    try {
+      await AudioBus.instance.stop().timeout(const Duration(milliseconds: 400));
+    } catch (_) {
+      // A slow stop is not a reason to refuse to listen.
+    }
     if (!mounted) {
       AudioBus.instance.unmute();
       return;
@@ -624,14 +986,23 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
     _showPreview();
 
     try {
-      // The rising tone starts immediately. The short pause after it keeps the
-      // microphone from capturing the tone itself.
-      unawaited(Feedback.instance.listening());
-      await Future<void>.delayed(const Duration(milliseconds: 220));
-      if (!mounted || token != _listenToken) return;
+      // A short tick confirms the press was felt, then the rising tone plays
+      // only once the microphone is genuinely open. Playing it at key-down
+      // tells the user to speak too early and swallows the first word.
+      unawaited(Feedback.instance.gesture());
 
-      final result = await VoiceCommandService.instance.listen();
-      if (!mounted || token != _listenToken) return;
+      VoiceCommandResult? result;
+      for (var attempt = 0; attempt < 2; attempt++) {
+        result = await VoiceCommandService.instance.listen(
+          onReady: () => unawaited(Feedback.instance.listening()),
+        );
+        if (!mounted || token != _listenToken) return;
+        // Nothing was heard. If the key is still down, listen once more rather
+        // than making the user perform the whole hold-and-speak ritual again.
+        if (result.problem != VoiceProblem.noSpeech || !_talkKeyHeld) break;
+        unawaited(Feedback.instance.notHeard());
+      }
+      if (result == null) return;
 
       setState(() => _listening = false);
       AudioBus.instance.unmute();
@@ -639,10 +1010,15 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
       await _sayReadingPausedHint();
     } finally {
       // Every exit path must reopen the voice: a denied permission or a
-      // cancelled listen would otherwise leave Cue silent for good.
-      AudioBus.instance.unmute();
-      if (mounted && _listening) {
-        setState(() => _listening = false);
+      // cancelled listen would otherwise leave Cue silent for good. But an
+      // attempt that has already been replaced must not touch the state of the
+      // attempt that replaced it, or it would unmute the microphone's silence
+      // guard and clear the new "Listening" state.
+      if (token == _listenToken) {
+        AudioBus.instance.unmute();
+        if (mounted && _listening) {
+          setState(() => _listening = false);
+        }
       }
     }
   }
@@ -700,6 +1076,57 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
         unawaited(_setInterpretation(Interpretation.banknote));
       case VoiceCommand.screenMode:
         unawaited(_setInterpretation(Interpretation.screen));
+      case VoiceCommand.torchOn:
+        unawaited(_torchFromVoice(true));
+      case VoiceCommand.torchOff:
+        unawaited(_torchFromVoice(false));
+      case VoiceCommand.currentTime:
+        unawaited(_sayTime());
+      case VoiceCommand.currentDate:
+        unawaited(_sayDate());
+      case VoiceCommand.location:
+        unawaited(_sayLocation());
+      case VoiceCommand.locationSettings:
+        unawaited(_openLocationSettings());
+      case VoiceCommand.toggleLanguage:
+        _toggleLanguage();
+      case VoiceCommand.whoAreYou:
+        unawaited(
+          AudioBus.instance.say(
+            _strings.cueName,
+            priority: SpeechPriority.answer,
+          ),
+        );
+      case VoiceCommand.howAreYou:
+        unawaited(
+          AudioBus.instance.say(
+            _strings.cueReady,
+            priority: SpeechPriority.answer,
+          ),
+        );
+      case VoiceCommand.thanks:
+        unawaited(
+          AudioBus.instance.say(
+            _strings.cueWelcome,
+            priority: SpeechPriority.navigation,
+          ),
+        );
+      case VoiceCommand.greeting:
+        unawaited(
+          AudioBus.instance.say(
+            _strings.cueGreeting,
+            priority: SpeechPriority.navigation,
+          ),
+        );
+      case VoiceCommand.whatIsThis:
+        // In object mode the natural answer is the last description, in text
+        // mode it is a fresh read. The screen is the only place that knows
+        // which mode is active.
+        if (_pipeline.interpretation == Interpretation.object) {
+          _repeat();
+        } else {
+          _activate();
+        }
       case VoiceCommand.showPreview:
         _showPreview();
         unawaited(
@@ -742,9 +1169,9 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
             : 'I did not hear anything. Hold volume down and try again.';
       case VoiceProblem.noMatch:
         return hi
-            ? 'मैं समझा नहीं। पढ़ो, दोहराओ, रुको, ठहरो, जारी रखो, अगला, पिछला, मदद, धीरे, तेज़, या मोड कहें।'
-            : 'I did not understand. Say read, repeat, stop, pause, resume, '
-                  'next, back, help, slower, faster, or a mode.';
+            ? 'मैं समझा नहीं। पढ़ो, मदद, या कोई सवाल पूछें। जैसे समय क्या है।'
+            : 'I did not understand. Say read, help, or ask a question such '
+                  'as what time is it.';
       case VoiceProblem.busy:
         return hi ? 'पहले से सुन रहा हूँ।' : 'Already listening.';
       case VoiceProblem.error:
@@ -905,6 +1332,12 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
               _nextInterpretation,
           CustomSemanticsAction(label: _strings.actionLanguage):
               _toggleLanguage,
+          CustomSemanticsAction(label: _strings.actionTime): () =>
+              unawaited(_sayTime()),
+          CustomSemanticsAction(label: _strings.actionDate): () =>
+              unawaited(_sayDate()),
+          CustomSemanticsAction(label: _strings.actionLocation): () =>
+              unawaited(_sayLocation()),
         },
         excludeSemantics: true,
         child: Listener(
@@ -926,7 +1359,13 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
                     opacity: _previewOn ? 1 : 0,
                     duration: const Duration(milliseconds: 900),
                     curve: Curves.easeOut,
-                    child: _preview(controller),
+                    // When the preview is hidden the camera widget is removed
+                    // from the tree instead of fading in place. A fading child
+                    // stays mounted, and CameraPreview throws if it rebuilds
+                    // after the controller has been disposed.
+                    child: _previewOn
+                        ? _preview(controller)
+                        : const SizedBox.shrink(),
                   ),
                 const IgnorePointer(
                   child: ColoredBox(color: Color(0x66000000)),

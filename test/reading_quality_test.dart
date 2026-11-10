@@ -2,6 +2,29 @@ import 'package:cue/live/reading_quality.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  group('English-like filtering', () {
+    test(
+      'English-like tokens without common words also get the Hindi fallback',
+      () {
+        expect(
+          looksLikeEnglishText('astronaut telescope nebula crater'),
+          isFalse,
+        );
+      },
+    );
+
+    test('Latin garbage does not look like English', () {
+      expect(looksLikeEnglishText('zefrx wohe plj qlkm'), isFalse);
+    });
+
+    test('ordinary English prose is English', () {
+      expect(
+        looksLikeEnglishText('the cat sat on the mat and the dog ran'),
+        isTrue,
+      );
+    });
+  });
+
   group('printed text is read normally', () {
     test('a normal paragraph', () {
       const page =

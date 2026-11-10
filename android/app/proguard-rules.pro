@@ -17,3 +17,17 @@
 # Flutter plugin, so R8 does not strip them.
 -keep class com.google.mlkit.** { *; }
 -keep class com.google_mlkit_text_recognition.** { *; }
+
+# Ultralytics pulls in androidx.work (and androidx.room / startup) transitively.
+# WorkManager is started by androidx.startup; the database and Room
+# implementation are resolved by name at runtime. If R8 removes them, the
+# app crashes on launch with "Failed to create an instance of class
+# androidx.work.impl.WorkDatabase".
+-keep class androidx.work.** { *; }
+-keep class androidx.room.** { *; }
+-keep class androidx.sqlite.** { *; }
+-keep class androidx.startup.** { *; }
+-dontwarn androidx.work.**
+-dontwarn androidx.room.**
+-dontwarn androidx.sqlite.**
+-dontwarn androidx.startup.**

@@ -153,6 +153,16 @@ void main() {
       expect(parseVoiceCommand('तेज'), VoiceCommand.faster);
     });
 
+    test('torch controls', () {
+      expect(parseVoiceCommand('torch on'), VoiceCommand.torchOn);
+      expect(parseVoiceCommand('turn on the torch'), VoiceCommand.torchOn);
+      expect(parseVoiceCommand('light off'), VoiceCommand.torchOff);
+      expect(parseVoiceCommand('वॉल्यूम'), VoiceCommand.unknown);
+      expect(parseVoiceCommand('टॉर्च बंद'), VoiceCommand.torchOff);
+      expect(parseVoiceCommand('लाइट बंद'), VoiceCommand.torchOff);
+      expect(parseVoiceCommand('टॉर्च चालू'), VoiceCommand.torchOn);
+    });
+
     test('language switching', () {
       expect(parseVoiceCommand('हिंदी'), VoiceCommand.hindiMode);
       expect(parseVoiceCommand('हिन्दी'), VoiceCommand.hindiMode);
@@ -194,9 +204,120 @@ void main() {
     });
 
     test('words are matched whole, not inside other words', () {
-      expect(parseVoiceCommand('stopwatch'), VoiceCommand.unknown);
       expect(parseVoiceCommand('reading'), VoiceCommand.unknown);
       expect(parseVoiceCommand('unread'), VoiceCommand.unknown);
+    });
+  });
+
+  group('phone facts', () {
+    test('time questions', () {
+      expect(parseVoiceCommand('what time is it'), VoiceCommand.currentTime);
+      expect(parseVoiceCommand('what is the time'), VoiceCommand.currentTime);
+      expect(parseVoiceCommand('tell me the time'), VoiceCommand.currentTime);
+      expect(parseVoiceCommand('time'), VoiceCommand.currentTime);
+      expect(parseVoiceCommand('समय क्या है'), VoiceCommand.currentTime);
+      expect(parseVoiceCommand('टाइम क्या है'), VoiceCommand.currentTime);
+    });
+
+    test('date questions', () {
+      expect(parseVoiceCommand("what's the date"), VoiceCommand.currentDate);
+      expect(parseVoiceCommand('today\'s date'), VoiceCommand.currentDate);
+      expect(parseVoiceCommand('which day is it'), VoiceCommand.currentDate);
+      expect(parseVoiceCommand('तारीख क्या है'), VoiceCommand.currentDate);
+    });
+
+    test('location questions', () {
+      expect(parseVoiceCommand('where am I'), VoiceCommand.location);
+      expect(parseVoiceCommand('where are we'), VoiceCommand.location);
+      expect(parseVoiceCommand('what is my location'), VoiceCommand.location);
+      expect(parseVoiceCommand('मैं कहाँ हूँ'), VoiceCommand.location);
+      expect(parseVoiceCommand('मेरी लोकेशन'), VoiceCommand.location);
+    });
+
+    test('turning location on is its own command', () {
+      expect(
+        parseVoiceCommand('turn on location'),
+        VoiceCommand.locationSettings,
+      );
+      expect(
+        parseVoiceCommand('open location settings'),
+        VoiceCommand.locationSettings,
+      );
+      expect(
+        parseVoiceCommand('लोकेशन चालू करो'),
+        VoiceCommand.locationSettings,
+      );
+    });
+
+    test('time is not confused with reading', () {
+      expect(parseVoiceCommand('read this page'), VoiceCommand.readNow);
+      expect(parseVoiceCommand('what does it say'), VoiceCommand.readNow);
+    });
+  });
+
+  group('natural questions', () {
+    test('name and identity', () {
+      expect(parseVoiceCommand('what is your name'), VoiceCommand.whoAreYou);
+      expect(parseVoiceCommand("what's your name?"), VoiceCommand.whoAreYou);
+      expect(parseVoiceCommand('who are you'), VoiceCommand.whoAreYou);
+      expect(parseVoiceCommand('तुम्हारा नाम क्या है'), VoiceCommand.whoAreYou);
+    });
+
+    test('small talk is answered instead of rejected', () {
+      expect(parseVoiceCommand('how are you'), VoiceCommand.howAreYou);
+      expect(parseVoiceCommand('thank you'), VoiceCommand.thanks);
+      expect(parseVoiceCommand('धन्यवाद'), VoiceCommand.thanks);
+      expect(parseVoiceCommand('good morning'), VoiceCommand.greeting);
+      expect(parseVoiceCommand('नमस्ते'), VoiceCommand.greeting);
+    });
+
+    test('what is this asks for a read or a description', () {
+      expect(parseVoiceCommand('what is this'), VoiceCommand.whatIsThis);
+      expect(parseVoiceCommand("what's that?"), VoiceCommand.whatIsThis);
+      expect(parseVoiceCommand('what do you see'), VoiceCommand.whatIsThis);
+      expect(parseVoiceCommand('यह क्या है'), VoiceCommand.whatIsThis);
+    });
+
+    test('a bare language request toggles, a named one does not', () {
+      expect(parseVoiceCommand('change language'), VoiceCommand.toggleLanguage);
+      expect(parseVoiceCommand('switch language'), VoiceCommand.toggleLanguage);
+      expect(parseVoiceCommand('भाषा बदलो'), VoiceCommand.toggleLanguage);
+      expect(
+        parseVoiceCommand('change language to Hindi'),
+        VoiceCommand.hindiMode,
+      );
+      expect(
+        parseVoiceCommand('switch language to English'),
+        VoiceCommand.englishMode,
+      );
+    });
+  });
+
+  group('near-miss recognition', () {
+    test('a one-letter slip still reads', () {
+      expect(parseVoiceCommand('red'), VoiceCommand.readNow);
+      expect(parseVoiceCommand('reed'), VoiceCommand.readNow);
+    });
+
+    test('a one-letter slip still repeats', () {
+      expect(parseVoiceCommand('repead'), VoiceCommand.repeat);
+      expect(parseVoiceCommand('repet'), VoiceCommand.repeat);
+    });
+
+    test('a one-letter slip still stops', () {
+      expect(parseVoiceCommand('stp'), VoiceCommand.stop);
+      expect(parseVoiceCommand('stopp'), VoiceCommand.stop);
+    });
+
+    test('a long sentence is never fuzzed into a command', () {
+      expect(
+        parseVoiceCommand('I was reading the newspaper on the red chair'),
+        VoiceCommand.unknown,
+      );
+      expect(
+        parseVoiceCommand('the road was wet and the light was dim'),
+        VoiceCommand.unknown,
+      );
     });
   });
 }

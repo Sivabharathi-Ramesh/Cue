@@ -159,6 +159,74 @@ class ReadingQuality {
 /// Devanagari vowel signs are combining marks (`\p{M}`), not letters, so a
 /// Latin-only test would reject perfectly good Hindi. The classes here are
 /// Unicode-aware on purpose.
+const Set<String> _commonEnglishWords = {
+  'a',
+  'an',
+  'and',
+  'are',
+  'as',
+  'at',
+  'be',
+  'by',
+  'for',
+  'from',
+  'have',
+  'he',
+  'her',
+  'his',
+  'i',
+  'if',
+  'in',
+  'into',
+  'is',
+  'it',
+  'its',
+  'may',
+  'not',
+  'of',
+  'on',
+  'or',
+  'she',
+  'so',
+  'that',
+  'the',
+  'this',
+  'to',
+  'was',
+  'we',
+  'when',
+  'with',
+  'you',
+  'your',
+  'they',
+  'their',
+  'than',
+  'there',
+  'our',
+  'would',
+};
+
+/// True when [text] contains a fair share of common English words.
+///
+/// The Latin OCR can return strings that look like English words on a
+/// Devanagari page. Counting high-frequency English tokens lets Cue decide to
+/// try the Hindi recogniser instead of reading gibberish aloud.
+bool looksLikeEnglishText(String text) {
+  final tokens = text
+      .toLowerCase()
+      .split(RegExp(r'\s+'))
+      .map((token) => token.replaceAll(RegExp(r'^[^a-z]+|[^a-z]+$'), ''))
+      .where((token) => token.isNotEmpty)
+      .toList(growable: false);
+  if (tokens.length < 4) return true;
+
+  var common = 0;
+  for (final token in tokens) {
+    if (_commonEnglishWords.contains(token)) common++;
+  }
+  return common / tokens.length >= 0.14;
+}
+
 bool looksLikeText(String text) {
   final trimmed = text.trim();
   if (trimmed.length < 2) return false;

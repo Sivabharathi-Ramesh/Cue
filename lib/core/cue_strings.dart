@@ -55,6 +55,17 @@ class CueStrings {
       : 'Cue needs the camera to work. Double tap to try again and allow '
             'camera access when the phone asks.';
 
+  String get microphoneAsk => _hi
+      ? 'आवाज़ से कमांड देने के लिए क्यू को माइक्रोफ़ोन चाहिए। फ़ोन जो अनुमति '
+            'माँगे, उसे स्वीकार करें।'
+      : 'To take voice commands, Cue needs the microphone. Allow it when the '
+            'phone asks.';
+
+  String get microphoneBlocked => _hi
+      ? 'माइक्रोफ़ोन बंद है, इसलिए आवाज़ कमांड काम नहीं करेंगे। सेटिंग, अनुमतियाँ, '
+            'माइक्रोफ़ोन में जाकर क्यू को अनुमति दें।'
+      : 'The microphone is off, so voice commands will not work. Open '
+            'Settings, then Permissions, then Microphone, and allow Cue.';
   String get cameraPermissionBlocked => _hi
       ? 'कैमरा क्यू के लिए बंद है। सेटिंग, अनुमतियाँ, कैमरा में जाकर क्यू को '
             'अनुमति दें।'
@@ -86,12 +97,17 @@ class CueStrings {
       ? 'नियंत्रण। आवाज़ कमांड के लिए वॉल्यूम डाउन बटन आधा सेकंड दबाए रखें, '
             'बोलें, फिर छोड़ें। पढ़ो, रुको, दोहराओ, या मदद कहें। अगला, '
             'पिछला, शुरू से, ठहरो, जारी रखो, धीरे, तेज़, या मोड भी कह सकते '
-            'हैं। वस्तु मोड देखी चीज़ों के नाम बताता है; नोट और स्क्रीन मोड '
-            'अभी नहीं हैं। दो बार टैप करने से अभी पढ़ता है। मोड बदलने के '
-            'लिए बगल में स्वाइप करें।'
+            'हैं। समय, तारीख, या अपनी लोकेशन भी पूछ सकते हैं। लोकेशन बंद हो तो '
+            '"लोकेशन सेटिंग" कहें। "यह क्या है", "तुम कौन हो", या "भाषा '
+            'बदलो" भी कह सकते हैं। वस्तु मोड देखी चीज़ों के नाम बताता है; नोट '
+            'और स्क्रीन मोड अभी नहीं हैं। दो बार टैप करने से अभी पढ़ता है। '
+            'मोड बदलने के लिए बगल में स्वाइप करें।'
       : 'Controls. Hold the volume down button for half a second, speak, then '
             'let go. Say read, stop, repeat, or help. You can also say next, '
             'back, start over, pause, resume, slower, faster, or a mode. '
+            'Ask what time it is, today\'s date, or where you are. If location '
+            'is off, say turn on location to open location settings. '
+            'Ask what is this, who are you, or change language. '
             'Object mode names what it sees; banknote and screen are not built '
             'yet. Double tap reads now. Swipe sideways changes mode. The '
             'actions menu has the same controls.';
@@ -100,6 +116,25 @@ class CueStrings {
       ? 'आवाज़ कमांड के लिए वॉल्यूम डाउन बटन आधा सेकंड दबाए रखें, बोलें, फिर '
             'छोड़ें।'
       : 'Hold the volume down button for half a second, speak, then let go.';
+
+  // --- Natural questions ----------------------------------------------------
+
+  String get cueName => _hi
+      ? 'मैं क्यू हूँ। मैं पढ़कर सुनाता हूँ और कैमरे के सामने की चीज़ें बताता '
+            'हूँ।'
+      : 'I am Cue. I read text aloud and describe what the camera sees.';
+
+  String get cueReady => _hi
+      ? 'मैं ठीक हूँ। पढ़ने के लिए वॉल्यूम डाउन दबाए रखकर पढ़ो कहें।'
+      : 'I am fine. Hold volume down and say read when you are ready.';
+
+  String get cueWelcome => _hi
+      ? 'कोई बात नहीं। मदद चाहिए तो मदद कहें।'
+      : 'You are welcome. Say help if you need anything.';
+
+  String get cueGreeting => _hi
+      ? 'नमस्ते। पढ़ने के लिए वॉल्यूम डाउन दबाए रखकर पढ़ो कहें।'
+      : 'Hello. Hold volume down and say read when you want me to read.';
 
   String get fastest =>
       _hi ? 'यह सबसे तेज़ गति है।' : 'This is the fastest speed.';
@@ -189,6 +224,30 @@ class CueStrings {
       ? 'अंग्रेज़ी आवाज़ उपलब्ध नहीं है। हिंदी में रह रहा हूँ।'
       : 'The English voice is unavailable. Staying in English.';
 
+  // --- Sensors and environment ----------------------------------------------
+
+  String get holdStill => _hi ? 'फ़ोन स्थिर रखें।' : 'Hold the phone still.';
+
+  String get tiltLeft => _hi
+      ? 'फ़ोन का ऊपरी हिस्सा बाएँ घुमाएँ।'
+      : 'Tilt the top of the phone to the left.';
+
+  String get tiltRight => _hi
+      ? 'फ़ोन का ऊपरी हिस्सा दाएँ घुमाएँ।'
+      : 'Tilt the top of the phone to the right.';
+
+  String get torchOn => _hi
+      ? 'अंधेरे की वजह से टॉर्च चालू कर रहा हूँ। बंद करने के लिए टॉर्च बंद कहें।'
+      : 'It is dark. Turning on the torch. Say torch off to switch it off.';
+
+  String get torchTurnedOn => _hi ? 'टॉर्च चालू।' : 'Torch on.';
+
+  String get torchTurnedOff => _hi ? 'टॉर्च बंद।' : 'Torch off.';
+
+  String get torchAutoOff => _hi
+      ? 'टॉर्च बंद कर दी। फिर से चालू करने के लिए टॉर्च चालू कहें।'
+      : 'Torch off. Say torch on if you need it again.';
+
   // --- Modes ----------------------------------------------------------------
 
   String get objectModeAnnouncement => _hi
@@ -266,4 +325,10 @@ class CueStrings {
   String get actionStartOver => _hi ? 'शुरू से पढ़ो' : 'Start over';
 
   String get actionLanguage => _hi ? 'भाषा बदलो' : 'Change language';
+
+  String get actionTime => _hi ? 'समय बताओ' : 'Tell me the time';
+
+  String get actionDate => _hi ? 'तारीख बताओ' : "Tell me today's date";
+
+  String get actionLocation => _hi ? 'लोकेशन बताओ' : 'Tell me my location';
 }

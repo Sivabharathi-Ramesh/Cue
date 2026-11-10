@@ -94,6 +94,25 @@ class VoiceCommandService {
     'show preview',
     'hindi',
     'english',
+    'torch on',
+    'torch off',
+    'turn on the torch',
+    'turn off the torch',
+    'light on',
+    'light off',
+    'what time is it',
+    'what is the date',
+    'where am I',
+    'my location',
+    'turn on location',
+    'open location settings',
+    'change language',
+    'what is your name',
+    'who are you',
+    'how are you',
+    'what is this',
+    'what can you do',
+    'thank you',
   ];
 
   /// The same bias for a Hindi listen.
@@ -115,6 +134,20 @@ class VoiceCommandService {
     'हिंदी',
     'अंग्रेज़ी',
     'दिखाओ',
+    'टॉर्च चालू',
+    'टॉर्च बंद',
+    'लाइट चालू',
+    'लाइट बंद',
+    'समय क्या है',
+    'तारीख क्या है',
+    'मैं कहाँ हूँ',
+    'लोकेशन चालू करो',
+    'लोकेशन सेटिंग',
+    'भाषा बदलो',
+    'तुम्हारा नाम क्या है',
+    'यह क्या है',
+    'धन्यवाद',
+    'नमस्ते',
   ];
 
   final stt.SpeechToText _speech = stt.SpeechToText();
@@ -122,6 +155,12 @@ class VoiceCommandService {
   bool _initialized = false;
   bool _available = false;
   bool _listening = false;
+
+  /// True between the call to [listen] and the microphone actually opening.
+  bool _starting = false;
+
+  /// Set when the talk key is released before the microphone opened.
+  bool _stopRequested = false;
   bool _permissionError = false;
   bool _localeMissing = false;
   String? _localeId;
@@ -138,6 +177,11 @@ class VoiceCommandService {
   /// one.
   int _session = 0;
 
+  /// Bumped whenever a listen is started or abandoned, including while the
+  /// engine is still opening. An attempt that was superseded must not open the
+  /// microphone or overwrite the state of the attempt replacing it.
+  int _request = 0;
+
   /// True while the user has let go of the talk key and the platform is being
   /// stopped on purpose. Errors during that window are expected, not failures.
   bool _stopping = false;
@@ -148,11 +192,29 @@ class VoiceCommandService {
 
   bool get isListening => _listening;
 
+  /// Prepares the recogniser without opening the microphone.
+  ///
+  /// Called when the live screen opens, so the first volume-down press is not
+  /// spent initialising the engine, and so the microphone permission dialog
+  /// appears before the user is already mid-sentence. A listen that starts on a
+  /// cold engine can take a second to accept audio, which feels like Cue
+  /// ignoring the first words.
+  Future<void> prepare() async {
+    if (_listening) return;
+    await _ensureReady();
+  }
+
   /// Starts one listen and waits for a command, a timeout or an error.
+  ///
+  /// [onReady] fires when the platform has the microphone open and is actually
+  /// accepting audio. The caller should make its "speak now" signal then, not
+  /// before: the recogniser can take half a second to get there, so a tone
+  /// played at key-down tells the user to speak into a microphone that is still
+  /// closed, and the first word is lost.
   ///
   /// The caller should stop any speech first: otherwise the microphone hears
   /// Cue's own voice.
-  Future<VoiceCommandResult> listen() async {
+  Future<VoiceCommandResult> listen({void Function()? onReady}) async {
     if (_listening) {
       return const VoiceCommandResult(
         VoiceCommand.unknown,
@@ -160,8 +222,20 @@ class VoiceCommandService {
       );
     }
 
+    _starting = true;
+    _stopRequested = false;
+    final request = ++_request;
     final ready = await _ensureReady();
+    // A second press can arrive while the engine is still opening. This
+    // attempt is then obsolete and must leave the microphone to its successor.
+    if (request != _request) {
+      return const VoiceCommandResult(
+        VoiceCommand.unknown,
+        problem: VoiceProblem.busy,
+      );
+    }
     if (!ready) {
+      _starting = false;
       return VoiceCommandResult(
         VoiceCommand.unknown,
         problem: _permissionError
@@ -178,12 +252,17 @@ class VoiceCommandService {
       // An idle recogniser is not an error.
     }
 
+    _starting = false;
     _listening = true;
     _stopping = false;
     _lastWords = '';
+    _readyCallback = onReady;
     final session = ++_session;
     final completer = Completer<VoiceCommandResult>();
     _pending = completer;
+    // Field diagnostics: a microphone failure is invisible otherwise, and this
+    // is the one part of Cue that cannot be checked from a log after the fact.
+    debugPrint('voice: listen start locale=${_localeId ?? 'default'}');
 
     try {
       await _speech.listen(
@@ -192,16 +271,17 @@ class VoiceCommandService {
           partialResults: true,
           cancelOnError: true,
           listenMode: stt.ListenMode.confirmation,
-          // Two seconds of silence ends the command. Seven seconds is the
-          // longest a single press-to-talk attempt may last.
-          pauseFor: const Duration(seconds: 2),
-          listenFor: const Duration(seconds: 7),
+          // Silence ends the command. A user who pauses to think mid-sentence
+          // should not be cut off, so it is generous; the overall window is a
+          // little longer than a slow command needs.
+          pauseFor: const Duration(milliseconds: 2500),
+          listenFor: const Duration(seconds: 8),
           localeId: _localeId,
           contextualPhrases: _phrasesFor(_language),
         ),
       );
     } catch (error) {
-      if (kDebugMode) debugPrint('voice: listen failed $error');
+      debugPrint('voice: listen failed $error');
       _finish(
         const VoiceCommandResult(
           VoiceCommand.unknown,
@@ -212,14 +292,26 @@ class VoiceCommandService {
     }
 
     // Safety net: a platform that never sends a final result must not leave
-    // the live screen stuck in "Listening".
+    // the live screen stuck in "Listening". Anything already heard is used
+    // rather than thrown away: a slow speaker often produces a partial
+    // transcript before the platform gives up, and "I did not hear anything"
+    // would be untrue.
     Timer(const Duration(seconds: 8), () {
       if (!_listening || session != _session) return;
       unawaited(_speech.stop().catchError((_) {}));
+      final words = _lastWords.trim();
+      final command = words.isEmpty
+          ? VoiceCommand.unknown
+          : parseVoiceCommand(words);
       _finish(
-        const VoiceCommandResult(
-          VoiceCommand.unknown,
-          problem: VoiceProblem.noSpeech,
+        VoiceCommandResult(
+          command,
+          words: words,
+          problem: words.isEmpty
+              ? VoiceProblem.noSpeech
+              : command == VoiceCommand.unknown
+              ? VoiceProblem.noMatch
+              : VoiceProblem.none,
         ),
       );
     });
@@ -233,6 +325,12 @@ class VoiceCommandService {
   /// does not, the last partial transcript is used, so a quick "read" is not
   /// thrown away just because the key came up early.
   Future<void> finishListening() async {
+    // Released while the engine was still opening. Remember it; the release is
+    // honoured as soon as the platform reports that the microphone is live.
+    if (_starting) {
+      _stopRequested = true;
+      return;
+    }
     if (!_listening) return;
     final session = _session;
     _stopping = true;
@@ -272,6 +370,16 @@ class VoiceCommandService {
 
   /// Stops a listen that is in progress, e.g. when the app is backgrounded.
   Future<void> cancel() async {
+    // The engine may still be opening. Abandon that attempt now, or it would
+    // open the microphone after the user already cancelled and start acting
+    // on whatever it heard.
+    if (_starting) {
+      _request++;
+      _starting = false;
+      _stopRequested = false;
+      _readyCallback = null;
+      return;
+    }
     if (!_listening) return;
     try {
       await _speech.cancel();
@@ -293,6 +401,16 @@ class VoiceCommandService {
       _localeDirty = true;
     }
 
+    // Ask for the microphone here, as early as the user has asked to listen.
+    // This avoids the plugin's combined request, which also asks for a
+    // Bluetooth permission Cue does not need.
+    try {
+      final current = await Permission.microphone.status;
+      if (!current.isGranted) {
+        await Permission.microphone.request();
+      }
+    } catch (_) {}
+
     if (_initialized) {
       if (_localeDirty) {
         await _selectLocale(_language);
@@ -305,7 +423,11 @@ class VoiceCommandService {
     try {
       _available = await _speech.initialize(
         onError: _onError,
+        onStatus: _onStatus,
         finalTimeout: const Duration(seconds: 1),
+        // Cue does not listen over Bluetooth; requesting that permission can
+        // leave invoke initialize looking successful without an ASR backend.
+        options: <stt.SpeechConfigOption>[stt.SpeechToText.androidNoBluetooth],
       );
     } catch (error) {
       if (kDebugMode) debugPrint('voice: initialize failed $error');
@@ -396,12 +518,10 @@ class VoiceCommandService {
     _lastWords = words;
 
     final command = parseVoiceCommand(words);
-    if (kDebugMode) {
-      debugPrint(
-        'voice: heard "$words" -> ${command.name} '
-        'final=${result.finalResult}',
-      );
-    }
+    debugPrint(
+      'voice: heard "$words" -> ${command.name} '
+      'final=${result.finalResult}',
+    );
 
     if (command != VoiceCommand.unknown) {
       unawaited(_speech.stop().catchError((_) {}));
@@ -420,13 +540,41 @@ class VoiceCommandService {
     }
   }
 
+  /// The callback to run once the platform has the microphone open.
+  void Function()? _readyCallback;
+
+  /// Turns the platform's "listening" status into the ready signal.
+  void _onStatus(String status) {
+    if (status != stt.SpeechToText.listeningStatus) return;
+    debugPrint('voice: microphone ready');
+    final ready = _readyCallback;
+    _readyCallback = null;
+    ready?.call();
+    // The key may have come up while the engine was still opening. Now that
+    // the microphone is live, honour that release instead of ignoring it and
+    // waiting out the full listen window in silence.
+    if (_stopRequested) unawaited(_speech.stop().catchError((_) {}));
+  }
+
   void _onError(SpeechRecognitionError error) {
     // A deliberate stop often surfaces as an error on Android; the release
     // timer below turns the last partial transcript into the result instead.
     if (_stopping) return;
 
-    if (kDebugMode) {
-      debugPrint('voice: error ${error.errorMsg} permanent=${error.permanent}');
+    debugPrint('voice: error ${error.errorMsg} permanent=${error.permanent}');
+
+    // Android often reports no_match or speech_timeout immediately after a
+    // usable partial transcript ("read this page" arrives as "read this").
+    // The words are already known, so they are parsed before the error is
+    // turned into a failure. Otherwise a command the user did say is answered
+    // with "I did not understand", which is the most confusing failure of all.
+    final heard = _lastWords.trim();
+    if (heard.isNotEmpty) {
+      final command = parseVoiceCommand(heard);
+      if (command != VoiceCommand.unknown) {
+        _finish(VoiceCommandResult(command, words: heard));
+        return;
+      }
     }
 
     final message = error.errorMsg.toLowerCase();
@@ -454,7 +602,10 @@ class VoiceCommandService {
 
   void _finish(VoiceCommandResult result) {
     _listening = false;
+    _starting = false;
     _stopping = false;
+    _stopRequested = false;
+    _readyCallback = null;
     final pending = _pending;
     _pending = null;
     if (pending != null && !pending.isCompleted) pending.complete(result);

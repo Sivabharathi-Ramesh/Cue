@@ -21,6 +21,18 @@ enum VoiceCommand {
   showPreview,
   hindiMode,
   englishMode,
+  torchOn,
+  torchOff,
+  currentTime,
+  currentDate,
+  location,
+  locationSettings,
+  toggleLanguage,
+  whoAreYou,
+  howAreYou,
+  thanks,
+  greeting,
+  whatIsThis,
   unknown,
 }
 
@@ -51,6 +63,8 @@ VoiceCommand parseVoiceCommand(String transcript) {
 
   bool exact(String phrase) => text == _normalize(phrase);
 
+  bool near(String word) => _near(text, word);
+
   // Language switching comes first: "हिंदी" must never be mistaken for a
   // read command, and "english" must not be caught by another phrase.
   if (has('hindi') ||
@@ -68,6 +82,183 @@ VoiceCommand parseVoiceCommand(String transcript) {
       has('अंग्रेजी') ||
       has('इंग्लिश')) {
     return VoiceCommand.englishMode;
+  }
+
+  // A bare "language" is a request to switch, so it is checked after the
+  // explicit names above: "change language to Hindi" still sets Hindi instead
+  // of blindly toggling away from it.
+  if (has('change language') ||
+      has('change the language') ||
+      has('switch language') ||
+      has('language change') ||
+      exact('language') ||
+      has('भाषा बदल') ||
+      has('भाषा बदलो') ||
+      has('भाषा बदलें') ||
+      has('भाषा बदले') ||
+      has('भाषा चेंज') ||
+      exact('भाषा')) {
+    return VoiceCommand.toggleLanguage;
+  }
+
+  // Identity and small talk. People ask these before they ask for a reading,
+  // and a blind user cannot read a "not understood" message on screen.
+  if (has('what is your name') ||
+      has('what s your name') ||
+      has('your name') ||
+      has('who are you') ||
+      has('what are you') ||
+      has('तुम्हारा नाम') ||
+      has('आपका नाम') ||
+      has('तुम कौन') ||
+      has('आप कौन') ||
+      exact('नाम')) {
+    return VoiceCommand.whoAreYou;
+  }
+  if (has('how are you') ||
+      has('how do you do') ||
+      has('how are you doing') ||
+      has('how you doing') ||
+      has('कैसे हो') ||
+      has('कैसी हो') ||
+      has('आप कैसे') ||
+      has('तुम कैसे')) {
+    return VoiceCommand.howAreYou;
+  }
+  if (has('thank you') ||
+      has('thanks') ||
+      has('thank u') ||
+      has('धन्यवाद') ||
+      has('शुक्रिया') ||
+      has('थैंक यू')) {
+    return VoiceCommand.thanks;
+  }
+  if (has('good morning') ||
+      has('good afternoon') ||
+      has('good evening') ||
+      has('hello cue') ||
+      has('hey cue') ||
+      exact('hello') ||
+      exact('namaste') ||
+      has('नमस्ते') ||
+      exact('नमस्कार') ||
+      has('सुप्रभात')) {
+    return VoiceCommand.greeting;
+  }
+
+  // "What is this" is the most natural way to ask for a read or a description.
+  // The screen decides which, because only it knows whether object mode is on.
+  if (has('what is this') ||
+      has('what s this') ||
+      has('what is that') ||
+      has('what s that') ||
+      has('what do you see') ||
+      has('what can you see') ||
+      has('यह क्या') ||
+      has('ये क्या') ||
+      has('वह क्या') ||
+      has('क्या दिख')) {
+    return VoiceCommand.whatIsThis;
+  }
+
+  // Torch is a device control, not a reading command.
+  if (has('torch on') ||
+      has('turn on the torch') ||
+      has('turn on torch') ||
+      has('light on') ||
+      has('turn on the light') ||
+      has('the light on') ||
+      has('flashlight on') ||
+      has('turn on the flashlight') ||
+      has('switch on the torch') ||
+      has('switch on light') ||
+      has('टॉर्च चालू') ||
+      has('टॉर्च ऑन') ||
+      has('लाइट चालू') ||
+      has('रोशनी चालू')) {
+    return VoiceCommand.torchOn;
+  }
+  if (has('torch off') ||
+      has('turn off the torch') ||
+      has('turn off torch') ||
+      has('light off') ||
+      has('turn off the light') ||
+      has('the light off') ||
+      has('flashlight off') ||
+      has('turn off the flashlight') ||
+      has('switch off the torch') ||
+      has('switch off light') ||
+      has('टॉर्च बंद') ||
+      has('टॉर्च ऑफ') ||
+      has('लाइट बंद') ||
+      has('रोशनी बंद')) {
+    return VoiceCommand.torchOff;
+  }
+
+  // Questions about the phone itself. Checked before reading commands so
+  // "what time is it" never becomes "read".
+  if (has('what time') ||
+      has('the time') ||
+      has('time please') ||
+      has('tell me the time') ||
+      has('current time') ||
+      has('time now') ||
+      exact('time') ||
+      has('समय क्या') ||
+      has('क्या समय') ||
+      has('टाइम क्या') ||
+      has('अभी समय') ||
+      has('समय बताओ') ||
+      exact('समय') ||
+      exact('टाइम')) {
+    return VoiceCommand.currentTime;
+  }
+  if (has('what date') ||
+      has('the date') ||
+      has('date please') ||
+      has('today s date') ||
+      has('what day') ||
+      has('which day') ||
+      has('तारीख') ||
+      has('तारीख क्या') ||
+      has('कौन सा दिन') ||
+      has('कौन सी तारीख') ||
+      has('आज कौन') ||
+      exact('date') ||
+      exact('दिन')) {
+    return VoiceCommand.currentDate;
+  }
+  // "turn on location" is a request to fix the switch, not a question about
+  // where the user is. Checked before the location questions.
+  if (has('turn on location') ||
+      has('turn location on') ||
+      has('location on') ||
+      has('enable location') ||
+      has('location settings') ||
+      has('open location settings') ||
+      has('लोकेशन चालू') ||
+      has('लोकेशन सेटिंग') ||
+      has('स्थान चालू') ||
+      exact('location settings')) {
+    return VoiceCommand.locationSettings;
+  }
+  if (has('where am i') ||
+      has('where are we') ||
+      has('my location') ||
+      has('current location') ||
+      has('tell me my location') ||
+      has('what is my location') ||
+      has('which place') ||
+      has('what place') ||
+      has('मैं कहाँ') ||
+      has('हम कहाँ') ||
+      has('मेरी लोकेशन') ||
+      has('कौन सी जगह') ||
+      has('कहाँ हूँ') ||
+      exact('location') ||
+      exact('लोकेशन') ||
+      exact('जगह')) {
+    return VoiceCommand.location;
   }
 
   // "start over" must beat "start" (read now) and "फिर से" (repeat).
@@ -117,9 +308,13 @@ VoiceCommand parseVoiceCommand(String transcript) {
   if (has('object mode') ||
       has('identify mode') ||
       has('switch to object') ||
+      has('identify objects') ||
+      has('identify object') ||
+      has('describe objects') ||
       has('वस्तु मोड') ||
       has('ऑब्जेक्ट मोड') ||
       exact('object') ||
+      exact('objects') ||
       exact('identify') ||
       exact('वस्तु') ||
       exact('ऑब्जेक्ट')) {
@@ -151,7 +346,9 @@ VoiceCommand parseVoiceCommand(String transcript) {
       has('say again') ||
       has('say that again') ||
       has('read again') ||
+      has('read it again') ||
       has('read that again') ||
+      has('read it to me again') ||
       has('one more time') ||
       has('once more') ||
       has('दोहराओ') ||
@@ -206,6 +403,7 @@ VoiceCommand parseVoiceCommand(String transcript) {
       has('what can i say') ||
       has('what do i say') ||
       has('what can i do') ||
+      has('what can you do') ||
       has('how do i use this') ||
       has('instructions') ||
       has('commands') ||
@@ -257,6 +455,8 @@ VoiceCommand parseVoiceCommand(String transcript) {
       has('read that') ||
       has('read the page') ||
       has('what does it say') ||
+      has('what does this say') ||
+      has('what does that say') ||
       has('पढ़ो') ||
       has('पढ़') ||
       has('पढ़िए') ||
@@ -270,7 +470,70 @@ VoiceCommand parseVoiceCommand(String transcript) {
     return VoiceCommand.readNow;
   }
 
+  // Near-misses. Speech recognisers turn "read" into "red", "reed" or "read
+  // it", and a blind user gets no second chance to see what went wrong. Only
+  // short utterances are fuzzed, so a long sentence cannot accidentally match.
+  if (text.split(' ').length <= 3) {
+    if (near('read')) return VoiceCommand.readNow;
+    if (near('repeat')) return VoiceCommand.repeat;
+    if (near('stop')) return VoiceCommand.stop;
+    if (near('pause')) return VoiceCommand.pause;
+    if (near('resume')) return VoiceCommand.resume;
+    if (near('next')) return VoiceCommand.nextSentence;
+    if (near('back') || near('previous')) return VoiceCommand.previousSentence;
+    if (near('help')) return VoiceCommand.help;
+    if (near('time')) return VoiceCommand.currentTime;
+    if (near('date')) return VoiceCommand.currentDate;
+    if (near('location') || near('where')) return VoiceCommand.location;
+    if (near('slower')) return VoiceCommand.slower;
+    if (near('faster')) return VoiceCommand.faster;
+  }
+
   return VoiceCommand.unknown;
+}
+
+/// True when one word of a short transcript is one edit away from [word].
+///
+/// Used only for single-word commands: at that length a one-letter difference
+/// is almost always the recogniser, not a different intention.
+bool _near(String text, String word) {
+  final clean = word;
+  if (clean.length < 4) return false;
+
+  for (final token in text.split(' ')) {
+    if (token.length < 3) continue;
+    if ((token.length - clean.length).abs() > 1) continue;
+    if (_editDistance(token, clean) <= 1) return true;
+  }
+  return false;
+}
+
+/// Levenshtein distance, capped at 2 for speed: any larger difference is not a
+/// match anyway.
+int _editDistance(String a, String b) {
+  if (a == b) return 0;
+  if (a.isEmpty) return b.length;
+  if (b.isEmpty) return a.length;
+
+  var previous = List<int>.generate(b.length + 1, (index) => index);
+  var current = List<int>.filled(b.length + 1, 0);
+
+  for (var i = 1; i <= a.length; i++) {
+    current[0] = i;
+    for (var j = 1; j <= b.length; j++) {
+      final cost = a.codeUnitAt(i - 1) == b.codeUnitAt(j - 1) ? 0 : 1;
+      final deletion = previous[j] + 1;
+      final insertion = current[j - 1] + 1;
+      final substitution = previous[j - 1] + cost;
+      var best = deletion < insertion ? deletion : insertion;
+      if (substitution < best) best = substitution;
+      current[j] = best;
+    }
+    final swap = previous;
+    previous = current;
+    current = swap;
+  }
+  return previous[b.length];
 }
 
 /// Lowercases, strips punctuation and collapses whitespace.
