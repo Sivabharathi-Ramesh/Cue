@@ -129,9 +129,7 @@ class AudioBus {
     final clean = text.trim();
     if (!uncertain) return clean;
     final speaking = language ?? LanguageService.instance.language.value;
-    final prefix = speaking.isHindi
-        ? 'मुझे यकीन नहीं है। मुझे लगता है यह लिखा है: '
-        : 'I am not sure. I think it says: ';
+    final prefix = speaking.isHindi ? 'शायद: ' : 'Maybe: ';
     return '$prefix$clean';
   }
 

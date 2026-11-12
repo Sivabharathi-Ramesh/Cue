@@ -58,25 +58,19 @@ class FramePipeline {
 
   /// Consecutive untrusted readings before the app admits it cannot read them.
   ///
-  /// One bad frame is normal: motion blur, a passing shadow, a page turning.
-  /// Three in a row means the marks in view are genuinely not readable, which
-  /// is the handwriting case. Saying so immediately would interrupt the user
-  /// every time the camera nudged.
-  static const int _untrustedBeforeSpeaking = 3;
+  /// Five consecutive unreadable frames ensure we only speak when the user is
+  /// steadily pointing at unreadable marks, avoiding interruptions during quick
+  /// camera movement or framing transitions.
+  static const int _untrustedBeforeSpeaking = 5;
 
-  /// Minimum gap between "I cannot read these marks" sentences, so pointing at
-  /// handwriting does not produce the same apology forever.
-  static const Duration _honestyCooldown = Duration(seconds: 25);
+  /// Minimum gap between "Unreadable text" notifications to avoid nagging.
+  static const Duration _honestyCooldown = Duration(seconds: 45);
 
-  /// Consecutive frames without words before saying there is something in view
-  /// that Cue cannot identify.
-  ///
-  /// The same reasoning as [_untrustedBeforeSpeaking] applies: one wordless
-  /// frame is a shadow or a camera nudge, three is a scene.
-  static const int _notTextBeforeSpeaking = 3;
+  /// Consecutive frames without words before saying there is an unrecognised scene.
+  static const int _notTextBeforeSpeaking = 5;
 
-  /// Minimum gap between "I see something..." sentences.
-  static const Duration _notTextCooldown = Duration(seconds: 20);
+  /// Minimum gap between "Unrecognised object" sentences.
+  static const Duration _notTextCooldown = Duration(seconds: 45);
 
   final FrameSampler _sampler = FrameSampler();
   final StabilityGate _stability = StabilityGate();

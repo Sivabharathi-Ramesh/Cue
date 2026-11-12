@@ -16,16 +16,12 @@ class CueStrings {
   // --- Starting and status --------------------------------------------------
 
   String get looking => _hi
-      ? 'क्यू देख रहा है। कैमरा पाठ पर रखें।'
-      : 'Cue is looking. Point the camera at text.';
+      ? 'क्यू देख रहा है।'
+      : 'Cue is looking.';
 
   String get lookingIntro => _hi
-      ? 'क्यू देख रहा है। कैमरा पाठ पर रखें। आवाज़ से कमांड देने के लिए '
-            'वॉल्यूम डाउन बटन आधा सेकंड दबाए रखें, बोलें, फिर छोड़ दें। '
-            'कमांड सुनने के लिए मदद कहें।'
-      : 'Cue is looking. Point the camera at text. To give a voice command, '
-            'hold the volume down button for half a second, speak, then let '
-            'go. Say help to hear the commands.';
+      ? 'क्यू देख रहा है। बोलने के लिए वॉल्यूम डाउन दबाए रखें, या मदद कहें।'
+      : 'Cue is looking. Hold volume down to speak, or say help.';
 
   String get startingCamera => _hi ? 'कैमरा शुरू हो रहा है' : 'Starting camera';
 
@@ -50,10 +46,8 @@ class CueStrings {
       _hi ? 'जारी रखने के लिए दो बार टैप करें' : 'Double tap to resume';
 
   String get cameraPermissionDenied => _hi
-      ? 'क्यू को कैमरा चाहिए। दोबारा कोशिश के लिए दो बार टैप करें और फ़ोन के पूछने '
-            'पर अनुमति दें।'
-      : 'Cue needs the camera to work. Double tap to try again and allow '
-            'camera access when the phone asks.';
+      ? 'क्यू को कैमरा अनुमति चाहिए। दोबारा कोशिश के लिए दो बार टैप करें।'
+      : 'Cue needs camera access. Double tap to try again and allow access.';
 
   String get microphoneAsk => _hi
       ? 'आवाज़ से कमांड देने के लिए क्यू को माइक्रोफ़ोन चाहिए। फ़ोन जो अनुमति '
@@ -67,55 +61,33 @@ class CueStrings {
       : 'The microphone is off, so voice commands will not work. Open '
             'Settings, then Permissions, then Microphone, and allow Cue.';
   String get cameraPermissionBlocked => _hi
-      ? 'कैमरा क्यू के लिए बंद है। सेटिंग, अनुमतियाँ, कैमरा में जाकर क्यू को '
-            'अनुमति दें।'
-      : 'Camera access is switched off for Cue. Open Settings, then '
-            'Permissions, then Camera, and allow it.';
+      ? 'कैमरा अनुमति बंद है। सेटिंग में जाकर क्यू को अनुमति दें।'
+      : 'Camera access is blocked. Allow it in device Settings.';
 
   String get cameraNoDevice => _hi
       ? 'इस फ़ोन में कैमरा नहीं मिला।'
       : 'No camera was found on this phone.';
 
   String get cameraCouldNotStart => _hi
-      ? 'कैमरा शुरू नहीं हो सका। कोई दूसरा ऐप कैमरा इस्तेमाल कर रहा हो तो उसे '
-            'बंद करें, फिर दो बार टैप करें।'
-      : 'The camera could not start. Close any other app that is using it, '
-            'then double tap to try again.';
+      ? 'कैमरा शुरू नहीं हो सका। दो बार टैप करके फिर कोशिश करें।'
+      : 'Camera could not start. Double tap to try again.';
 
   String get retryHint =>
       _hi ? 'फिर कोशिश करने के लिए दो बार टैप करें' : 'Double tap to try again';
 
   // --- Controls -------------------------------------------------------------
 
-  String get paused => _hi
-      ? 'रुका हुआ। जारी रखने के लिए दो बार टैप करें।'
-      : 'Paused. Double tap to resume.';
+  String get paused => _hi ? 'रुका हुआ।' : 'Paused.';
 
   String get readingNow => _hi ? 'पढ़ रहा हूँ।' : 'Reading now.';
 
   String get help => _hi
-      ? 'नियंत्रण। आवाज़ कमांड के लिए वॉल्यूम डाउन बटन आधा सेकंड दबाए रखें, '
-            'बोलें, फिर छोड़ें। पढ़ो, रुको, दोहराओ, या मदद कहें। अगला, '
-            'पिछला, शुरू से, ठहरो, जारी रखो, धीरे, तेज़, या मोड भी कह सकते '
-            'हैं। समय, तारीख, या अपनी लोकेशन भी पूछ सकते हैं। लोकेशन बंद हो तो '
-            '"लोकेशन सेटिंग" कहें। "यह क्या है", "तुम कौन हो", या "भाषा '
-            'बदलो" भी कह सकते हैं। वस्तु मोड देखी चीज़ों के नाम बताता है; नोट '
-            'और स्क्रीन मोड अभी नहीं हैं। दो बार टैप करने से अभी पढ़ता है। '
-            'मोड बदलने के लिए बगल में स्वाइप करें।'
-      : 'Controls. Hold the volume down button for half a second, speak, then '
-            'let go. Say read, stop, repeat, or help. You can also say next, '
-            'back, start over, pause, resume, slower, faster, or a mode. '
-            'Ask what time it is, today\'s date, or where you are. If location '
-            'is off, say turn on location to open location settings. '
-            'Ask what is this, who are you, or change language. '
-            'Object mode names what it sees; banknote and screen are not built '
-            'yet. Double tap reads now. Swipe sideways changes mode. The '
-            'actions menu has the same controls.';
+      ? 'नियंत्रण। बोलने के लिए वॉल्यूम डाउन दबाए रखें। कमांड: पढ़ो, रुको, दोहराओ, ठहरो, जारी रखो, अगला, पिछला, शुरू से, धीरे, तेज़, समय, तारीख, लोकेशन, और मोड: पाठ, वस्तु, रंग। अभी पढ़ने के लिए दो बार टैप करें।'
+      : 'Controls. Hold volume down to speak. Commands: read, stop, repeat, pause, resume, next, back, start over, slower, faster, time, date, location, and modes: text, object, colour. Double tap to read now.';
 
   String get helpHowTo => _hi
-      ? 'आवाज़ कमांड के लिए वॉल्यूम डाउन बटन आधा सेकंड दबाए रखें, बोलें, फिर '
-            'छोड़ें।'
-      : 'Hold the volume down button for half a second, speak, then let go.';
+      ? 'बोलने के लिए वॉल्यूम डाउन दबाए रखें।'
+      : 'Hold volume down to speak.';
 
   // --- Natural questions ----------------------------------------------------
 
@@ -137,62 +109,60 @@ class CueStrings {
       : 'Hello. Hold volume down and say read when you want me to read.';
 
   String get fastest =>
-      _hi ? 'यह सबसे तेज़ गति है।' : 'This is the fastest speed.';
+      _hi ? 'सबसे तेज़ गति।' : 'Fastest speed.';
 
   String get slowest =>
-      _hi ? 'यह सबसे धीमी गति है।' : 'This is the slowest speed.';
+      _hi ? 'सबसे धीमी गति।' : 'Slowest speed.';
 
   String get fasterConfirmation => _hi
-      ? 'तेज़। यह नई पढ़ने की गति है।'
-      : 'Faster. This is the new reading speed.';
+      ? 'तेज़ गति।'
+      : 'Faster.';
 
   String get slowerConfirmation => _hi
-      ? 'धीरे। यह नई पढ़ने की गति है।'
-      : 'Slower. This is the new reading speed.';
+      ? 'धीमी गति।'
+      : 'Slower.';
 
   String get previewShown => _hi
-      ? 'पूर्वावलोकन पाँच सेकंड के लिए दिखाया गया।'
-      : 'Preview shown for five seconds.';
+      ? 'पूर्वावलोकन दिखाया गया।'
+      : 'Preview shown.';
 
   String get alreadyPaused => _hi ? 'पहले से रुका हुआ है।' : 'Already paused.';
 
   String get alreadyRunning =>
-      _hi ? 'क्यू पहले से चल रहा है।' : 'Cue is already running.';
+      _hi ? 'क्यू पहले से चल रहा है।' : 'Already running.';
 
   String get readingPaused => _hi
-      ? 'पढ़ना रुका। जारी रखने के लिए जारी रखो कहें।'
-      : 'Reading paused. Say resume to continue.';
+      ? 'पढ़ना रुका।'
+      : 'Reading paused.';
 
   // --- Navigation -----------------------------------------------------------
 
   String get endOfPage =>
-      _hi ? 'यह पेज का अंत है।' : 'That is the end of the page.';
+      _hi ? 'पेज का अंत।' : 'End of page.';
 
   String get startOfPage =>
-      _hi ? 'यह पेज की शुरुआत है।' : 'That is the start of the page.';
+      _hi ? 'पेज की शुरुआत।' : 'Start of page.';
 
   String get nothingToRead => _hi
-      ? 'अभी कुछ नहीं पढ़ा जा रहा। पेज पर कैमरा रखें और पढ़ो कहें।'
-      : 'Nothing is being read yet. Point at text and say read.';
+      ? 'अभी पढ़ने के लिए कुछ नहीं है। पढ़ो कहें।'
+      : 'Nothing to read yet. Say read.';
 
   String get nothingToRepeat =>
-      _hi ? 'अभी दोहराने के लिए कुछ नहीं है।' : 'Nothing to repeat yet.';
+      _hi ? 'दोहराने के लिए कुछ नहीं है।' : 'Nothing to repeat yet.';
 
   // --- Reading honestly -----------------------------------------------------
 
   String get notSureNoText => _hi
-      ? 'मुझे यकीन नहीं है। मुझे पाठ नहीं दिख रहा। फ़ोन स्थिर रखें और पेज पर '
-            'कैमरा रखें।'
-      : 'I am not sure. I cannot see text. Hold steady and point at the page.';
+      ? 'पाठ नहीं दिख रहा। स्थिर रखें।'
+      : 'No text visible. Hold steady.';
 
   String get marksNotReadable => _hi
-      ? 'मुझे निशान दिख रहे हैं, लेकिन मैं उन्हें पढ़ नहीं सकता। छपा हुआ पाठ '
-            'सबसे अच्छा काम करता है।'
-      : 'I can see marks, but I cannot read them. Printed text works best.';
+      ? 'पाठ पढ़ा नहीं जा रहा।'
+      : 'Unreadable text.';
 
   String get somethingThere => _hi
-      ? 'कुछ दिख रहा है, लेकिन मैं नहीं बता सकता कि क्या है।'
-      : 'I see something, but I cannot tell what it is.';
+      ? 'पहचान नहीं पाया।'
+      : 'Unrecognised object.';
 
   // --- Language -------------------------------------------------------------
 
@@ -251,12 +221,12 @@ class CueStrings {
   // --- Modes ----------------------------------------------------------------
 
   String get objectModeAnnouncement => _hi
-      ? 'वस्तु मोड। किसी वस्तु पर कैमरा रखें। क्यू उसका नाम बताएगा।'
-      : 'Object mode. Point at an object and Cue will name it.';
+      ? 'वस्तु मोड।'
+      : 'Object mode.';
 
   String get textModeAnnouncement => _hi
-      ? 'पाठ मोड। छपे हुए पाठ पर कैमरा रखें।'
-      : 'Text mode. Point at printed text.';
+      ? 'पाठ मोड।'
+      : 'Text mode.';
 
   String modeName(String englishLabel) {
     if (!_hi) return englishLabel;

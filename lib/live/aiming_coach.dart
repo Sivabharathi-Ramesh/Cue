@@ -66,17 +66,17 @@ extension AimingCueSpeech on AimingCue {
   String get speech {
     switch (this) {
       case AimingCue.tooDark:
-        return 'Too dark. Move to better light.';
+        return 'Too dark.';
       case AimingCue.tooClose:
-        return 'Too close. Move the phone back.';
+        return 'Too close.';
       case AimingCue.tooFar:
-        return 'Too far. Move the phone closer.';
+        return 'Too far.';
       case AimingCue.moveLeft:
         return 'Move left.';
       case AimingCue.moveRight:
         return 'Move right.';
       case AimingCue.nothingFound:
-        return 'No text yet. Point at a page.';
+        return 'No text.';
     }
   }
 
@@ -85,17 +85,17 @@ extension AimingCueSpeech on AimingCue {
     if (!language.isHindi) return speech;
     switch (this) {
       case AimingCue.tooDark:
-        return 'बहुत अंधेरा है। अच्छी रोशनी में जाएँ।';
+        return 'बहुत अंधेरा है।';
       case AimingCue.tooClose:
-        return 'बहुत पास है। फ़ोन पीछे करें।';
+        return 'बहुत पास है।';
       case AimingCue.tooFar:
-        return 'बहुत दूर है। फ़ोन पास करें।';
+        return 'बहुत दूर है।';
       case AimingCue.moveLeft:
         return 'बाएँ जाएँ।';
       case AimingCue.moveRight:
         return 'दाएँ जाएँ।';
       case AimingCue.nothingFound:
-        return 'अभी पाठ नहीं दिख रहा। पेज पर कैमरा रखें।';
+        return 'पाठ नहीं दिख रहा।';
     }
   }
 }
@@ -159,7 +159,7 @@ class AimingCoach {
     required bool recentlySpoken,
   }) {
     if (brightness < darkThreshold) {
-      return _emit(AimingCue.tooDark, now, const Duration(seconds: 4));
+      return _emit(AimingCue.tooDark, now, const Duration(seconds: 6));
     }
 
     if (recentlySpoken) {
@@ -173,7 +173,7 @@ class AimingCoach {
     if (!hasText) {
       _lastTextAt ??= now;
       if (now.difference(_lastTextAt!) >= const Duration(seconds: 5)) {
-        return _emit(AimingCue.nothingFound, now, const Duration(seconds: 8));
+        return _emit(AimingCue.nothingFound, now, const Duration(seconds: 10));
       }
       return null;
     }
@@ -184,16 +184,16 @@ class AimingCoach {
     if (layout.wordCount < 2) return null;
 
     if (layout.heightRatio > 0.55) {
-      return _emit(AimingCue.tooClose, now, const Duration(seconds: 5));
+      return _emit(AimingCue.tooClose, now, const Duration(seconds: 7));
     }
     if (layout.coverage < 0.012) {
-      return _emit(AimingCue.tooFar, now, const Duration(seconds: 5));
+      return _emit(AimingCue.tooFar, now, const Duration(seconds: 7));
     }
     if (layout.centerX < 0.35) {
-      return _emit(AimingCue.moveLeft, now, const Duration(seconds: 4));
+      return _emit(AimingCue.moveLeft, now, const Duration(seconds: 5));
     }
     if (layout.centerX > 0.65) {
-      return _emit(AimingCue.moveRight, now, const Duration(seconds: 4));
+      return _emit(AimingCue.moveRight, now, const Duration(seconds: 5));
     }
 
     return null;
@@ -207,7 +207,7 @@ class AimingCoach {
 
   AimingCue? _emit(AimingCue cue, DateTime now, Duration cooldown) {
     if (_lastCueAt != null &&
-        now.difference(_lastCueAt!) < const Duration(milliseconds: 1200)) {
+        now.difference(_lastCueAt!) < const Duration(milliseconds: 3500)) {
       return null;
     }
     if (_lastCue == cue &&

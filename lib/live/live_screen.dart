@@ -1165,20 +1165,18 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
                   'Microphone, and allow it for Cue.';
       case VoiceProblem.noSpeech:
         return hi
-            ? 'मुझे कुछ सुनाई नहीं दिया। वॉल्यूम डाउन दबाए रखकर फिर कोशिश करें।'
-            : 'I did not hear anything. Hold volume down and try again.';
+            ? 'आवाज़ नहीं सुनी।'
+            : 'No speech heard.';
       case VoiceProblem.noMatch:
         return hi
-            ? 'मैं समझा नहीं। पढ़ो, मदद, या कोई सवाल पूछें। जैसे समय क्या है।'
-            : 'I did not understand. Say read, help, or ask a question such '
-                  'as what time is it.';
+            ? 'मैं समझा नहीं। मदद कहें।'
+            : 'I did not understand. Say help for commands.';
       case VoiceProblem.busy:
         return hi ? 'पहले से सुन रहा हूँ।' : 'Already listening.';
       case VoiceProblem.error:
         return hi
-            ? 'आवाज़ कमांड में समस्या आई। फिर कोशिश करें, या स्क्रीन के जेस्चर इस्तेमाल करें।'
-            : 'Voice commands hit a problem. Try again, or use the screen '
-                  'gestures.';
+            ? 'आवाज़ कमांड समस्या। फिर कोशिश करें।'
+            : 'Voice command error. Try again.';
       case VoiceProblem.none:
         return '';
     }

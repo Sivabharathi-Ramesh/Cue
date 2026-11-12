@@ -24,24 +24,20 @@ class TtsService {
 
   /// The slowest and fastest rates the app will use.
   ///
-  /// flutter_tts halves the meaning of Android's number: the plugin multiplies
-  /// it by two before handing it to the platform, so 0.5 is the engine's
-  /// normal pace. These bounds sit entirely below that. Going slower than
-  /// [minRate] makes an Indian English voice stretch individual syllables
-  /// into something hard to parse; going faster than [maxRate] is back to the
-  /// speed that prompted this setting.
-  static const double minRate = 0.24;
-  static const double maxRate = 0.50;
+  /// On flutter_tts for Android, 0.5 is approximately the engine's normal pace.
+  /// A rate of 0.45 provides natural, clear and articulate speech without
+  /// dragging syllables or slurring words.
+  static const double minRate = 0.28;
+  static const double maxRate = 0.65;
 
   /// How far one "slower" or "faster" action moves the rate.
-  static const double step = 0.04;
+  static const double step = 0.05;
 
   /// What a page is read at until the user says otherwise.
   ///
-  /// Android 0.33 is about two thirds of the engine's normal speed; iOS uses
-  /// a different scale where 0.5 is normal, so 0.40 is the equivalent step
-  /// down there.
-  static double get defaultRate => Platform.isIOS ? 0.40 : 0.33;
+  /// 0.45 on Android and 0.48 on iOS provide a crisp, articulate and
+  /// easy-to-follow voice pace.
+  static double get defaultRate => Platform.isIOS ? 0.48 : 0.45;
 
   final FlutterTts _tts = FlutterTts();
 
@@ -168,15 +164,91 @@ class TtsService {
 
     for (final candidate in candidates) {
       if (!await _isAvailable(candidate)) continue;
-      if (await _tryLocale(candidate)) return true;
+      if (await _tryLocale(candidate)) {
+        await _selectClearVoice(candidate);
+        return true;
+      }
     }
 
     if (!language.isHindi) {
       // Some engines claim not to list English but still speak it. For the
       // fallback language, trying is better than refusing.
-      return await _tryLocale('en-IN') || await _tryLocale('en-US');
+      if (await _tryLocale('en-IN')) {
+        await _selectClearVoice('en-IN');
+        return true;
+      }
+      if (await _tryLocale('en-US')) {
+        await _selectClearVoice('en-US');
+        return true;
+      }
     }
     return false;
+  }
+
+  /// Selects the highest quality, most articulate voice available for [locale].
+  Future<void> _selectClearVoice(String locale) async {
+    try {
+      final voices = await _tts.getVoices;
+      if (voices is! List || voices.isEmpty) return;
+
+      final wanted = _normaliseLocale(locale);
+      Map<dynamic, dynamic>? bestVoice;
+      int bestScore = -1;
+
+      for (final item in voices) {
+        if (item is! Map) continue;
+        final vLocale = item['locale']?.toString();
+        final vName = item['name']?.toString() ?? '';
+        if (vLocale == null) continue;
+
+        final norm = _normaliseLocale(vLocale);
+        if (norm != wanted &&
+            !norm.startsWith('$wanted-') &&
+            !wanted.startsWith('$norm-')) {
+          continue;
+        }
+
+        var score = 10;
+        final lowerName = vName.toLowerCase();
+        if (lowerName.contains('natural') || lowerName.contains('neural')) {
+          score += 50;
+        }
+        if (lowerName.contains('network') ||
+            lowerName.contains('enhanced') ||
+            lowerName.contains('premium')) {
+          score += 30;
+        }
+        if (lowerName.contains('local') || lowerName.contains('high')) {
+          score += 15;
+        }
+        if (lowerName.contains('low') || lowerName.contains('compact')) {
+          score -= 10;
+        }
+
+        final quality = item['quality'];
+        if (quality is int) {
+          score += (quality ~/ 10);
+        }
+
+        if (score > bestScore) {
+          bestScore = score;
+          bestVoice = item;
+        }
+      }
+
+      if (bestVoice != null) {
+        final name = bestVoice['name']?.toString();
+        final chosenLocale = bestVoice['locale']?.toString();
+        if (name != null && chosenLocale != null) {
+          await _tts.setVoice(<String, String>{
+            'name': name,
+            'locale': chosenLocale,
+          });
+        }
+      }
+    } catch (_) {
+      // Voice selection is best-effort. If engine rejects setVoice, locale stays.
+    }
   }
 
   Future<bool> _isAvailable(String locale) async {
