@@ -188,6 +188,12 @@ String objectAnnouncement(List<String> labels, {required bool hindi}) {
 /// English: "Chair, about 2 metres away, to your left. Bottle, very close."
 /// Hindi:  "कुर्सी, आपके बाईं ओर, लगभग 2 मीटर दूर। बोतल, बहुत पास।"
 ///
+/// Two chairs in the same place are said once as "Two chairs", not twice as
+/// "Chair ... Chair ...". Only identical descriptions are grouped: a red mug
+/// and a blue mug stay separate sentences, because the colour is the useful
+/// difference. Hindi keeps the per-object form; the language is frozen and a
+/// hurried plural looks worse than a repeated noun.
+///
 /// Distance is only spoken when the class has a meaningful real-world height;
 /// guessing from the size of a pizza box would be worse than saying nothing.
 String objectDescription(
@@ -197,22 +203,56 @@ String objectDescription(
 }) {
   if (objects.isEmpty) return '';
 
-  final items = objects
-      .map(
-        (object) => hindi
-            ? _hindiObject(object, includeDistance)
-            : _englishObject(object, includeDistance),
-      )
-      .toList();
+  if (hindi) {
+    return objects
+        .map((object) => _hindiObject(object, includeDistance))
+        .join(' ');
+  }
 
-  return items.join(hindi ? ' ' : ' ');
+  final groups = <String, _EnglishGroup>{};
+  final order = <String>[];
+  for (final object in objects) {
+    final key = _englishGroupKey(object, includeDistance);
+    final group = groups[key];
+    if (group == null) {
+      groups[key] = _EnglishGroup(object);
+      order.add(key);
+    } else {
+      group.count++;
+    }
+  }
+
+  return order
+      .map((key) => _englishGroup(groups[key]!, includeDistance))
+      .join(' ');
 }
 
-String _englishObject(DetectedObject object, bool includeDistance) {
-  final colour = object.colour;
-  final name = colour == null
-      ? _capitalise(object.name)
-      : '${_capitalise(englishColourName(colour))} ${object.name}';
+class _EnglishGroup {
+  _EnglishGroup(this.object);
+
+  final DetectedObject object;
+  int count = 1;
+}
+
+String _englishGroupKey(DetectedObject object, bool includeDistance) {
+  final colour = objectSpeaksColour(object.name) && object.colour != null
+      ? englishColourName(object.colour!)
+      : '-';
+  final distance = includeDistance
+      ? englishDistancePhrase(object.distanceMeters) ?? '?'
+      : '?';
+  return '${object.name}|${object.direction.index}|$distance|$colour';
+}
+
+String _englishGroup(_EnglishGroup group, bool includeDistance) {
+  final object = group.object;
+  final colour = objectSpeaksColour(object.name) ? object.colour : null;
+  final descriptor = colour == null ? '' : '${englishColourName(colour)} ';
+
+  final name = group.count == 1
+      ? _capitalise('$descriptor${object.name}')
+      : '${_capitalise(_numberWord(group.count))} $descriptor'
+            '${englishPluralObjectLabel(object.name, group.count)}';
   final distance = includeDistance
       ? englishDistancePhrase(object.distanceMeters)
       : null;
@@ -221,7 +261,7 @@ String _englishObject(DetectedObject object, bool includeDistance) {
     case ObjectDirection.ahead:
       return distance == null
           ? '$name, in front of you.'
-          : '$name, $distance in front of you.';
+          : '$name, $distance, in front of you.';
     case ObjectDirection.left:
       return distance == null
           ? '$name, to your left.'
@@ -233,9 +273,74 @@ String _englishObject(DetectedObject object, bool includeDistance) {
   }
 }
 
+/// Whether a colour is a useful part of this class's description.
+///
+/// It never is for a person. "White person" and "brown person" are not object
+/// descriptions, they are descriptions of skin, and Cue must not say them.
+bool objectSpeaksColour(String name) => name != 'person';
+
+/// English plural for a detector class name, e.g. "two chairs".
+String englishPluralObjectLabel(String name, int count) {
+  if (count == 1) return name;
+
+  const irregular = <String, String>{
+    'person': 'people',
+    'computer mouse': 'computer mice',
+    'bookshelf': 'bookshelves',
+    'knife': 'knives',
+  };
+  final special = irregular[name];
+  if (special != null) return special;
+
+  // These class names are already plural. "Two keyses" is worse than "two
+  // keys", and the detector's label is already what a person would say.
+  const alreadyPlural = <String>{
+    'glasses',
+    'keys',
+    'earphones',
+    'headphones',
+    'pants',
+    'scissors',
+  };
+  if (alreadyPlural.contains(name)) return name;
+
+  if (name.endsWith('s') ||
+      name.endsWith('x') ||
+      name.endsWith('z') ||
+      name.endsWith('ch') ||
+      name.endsWith('sh')) {
+    return '${name}es';
+  }
+  if (name.endsWith('y') &&
+      name.length > 1 &&
+      !_isVowel(name[name.length - 2])) {
+    return '${name.substring(0, name.length - 1)}ies';
+  }
+  return '${name}s';
+}
+
+bool _isVowel(String character) => 'aeiou'.contains(character);
+
+String _numberWord(int count) {
+  const words = <String>[
+    'zero',
+    'one',
+    'two',
+    'three',
+    'four',
+    'five',
+    'six',
+    'seven',
+    'eight',
+    'nine',
+    'ten',
+  ];
+  return count >= 0 && count < words.length ? words[count] : '$count';
+}
+
 String _hindiObject(DetectedObject object, bool includeDistance) {
   final base = englishToHindiObjectLabels[object.name] ?? object.name;
-  final colour = object.colour;
+  final colour = objectSpeaksColour(object.name) ? object.colour : null;
   final name = colour == null ? base : '${hindiColourName(colour)} $base';
   final direction = switch (object.direction) {
     ObjectDirection.ahead => 'सामने',

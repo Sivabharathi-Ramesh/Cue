@@ -116,8 +116,30 @@ class FramePipeline {
   /// a half seconds, long enough that the phone does not cook.
   static const Duration _objectMinGap = Duration(milliseconds: 1200);
 
-  /// How long the same scene stays quiet before being described again.
-  static const Duration _objectRepeatGap = Duration(seconds: 8);
+  /// Slower cadence while the phone is moving.
+  ///
+  /// Object mode is a scanning mode: freezing it until the hand is still
+  /// leaves the user panning into silence. Frames still run while moving, but
+  /// slower and without narration, because a blurred frame is not something
+  /// to describe. The mode settles and speaks as soon as the hand stops.
+  static const Duration _objectMovingGap = Duration(milliseconds: 1900);
+
+  /// How long the phone must keep moving before the described scene is
+  /// forgotten.
+  ///
+  /// Panning is how the user searches. A new view may contain the same kind of
+  /// chair at the same rough distance as the old one, and a description-key
+  /// cache alone cannot tell that this is a different chair. Treating a real
+  /// pan as a new scene is honest: the user moved on purpose and expects the
+  /// new view to be described when they stop.
+  static const Duration _objectScanResetAfter = Duration(milliseconds: 800);
+
+  /// Minimum gap between automatic object sentences.
+  ///
+  /// Automatic narration only speaks objects that were not already described,
+  /// so this is a floor between sentences rather than a repeat timer. Manual
+  /// requests ignore it.
+  static const Duration _objectNarrationGap = Duration(milliseconds: 2600);
 
   /// Requires an object to be seen twice before Cue trusts it.
   final ObjectTracker _objectTracker = ObjectTracker();
@@ -128,10 +150,17 @@ class FramePipeline {
   /// TEMP DIAG: rate-limits the object-skip reason line.
   DateTime _lastObjectDiagAt = DateTime.fromMillisecondsSinceEpoch(0);
 
-  /// What was last described: names, directions and distance bands.
-  String _lastObjectSignature = '';
+  /// How many of each description have already been spoken.
+  ///
+  /// The key is what was said: class, direction and distance band. A value is
+  /// how many objects currently match it. When the count rises, Cue says the
+  /// group again ("two chairs"), because the number is new information. A
+  /// still scene keeps the same counts and stays silent.
+  Map<String, int> _describedObjectCounts = <String, int>{};
 
-  /// When objects were last announced, so the same scene is not repeated.
+  /// When objects were last announced. Automatic narration uses it as the
+  /// minimum gap between sentences; the delta check decides whether anything
+  /// new is worth saying.
   DateTime? _lastObjectSpokenAt;
 
   /// The most recent detections, kept so a follow-up question about a side can
@@ -179,7 +208,7 @@ class FramePipeline {
     _lastAttempt = DateTime.fromMillisecondsSinceEpoch(0);
     _lastOcr = DateTime.fromMillisecondsSinceEpoch(0);
     _lastObjectAt = DateTime.fromMillisecondsSinceEpoch(0);
-    _lastObjectSignature = '';
+    _describedObjectCounts = <String, int>{};
     _lastObjectSpokenAt = null;
     _lastObjects = const <DetectedObject>[];
     _objectTracker.reset();
@@ -273,7 +302,7 @@ class FramePipeline {
     _lastSpokenAt = null;
     _lastAutoDetectAt = null;
     _lastObjectAt = DateTime.fromMillisecondsSinceEpoch(0);
-    _lastObjectSignature = '';
+    _describedObjectCounts = <String, int>{};
     _lastObjectSpokenAt = null;
     _lastObjects = const <DetectedObject>[];
     _objectTracker.reset();
@@ -302,30 +331,51 @@ class FramePipeline {
       return;
     }
 
-    // A moving phone produces blurred frames. Reading them wastes work and
-    // makes the object detector guess, so wait for the hand to settle. Manual
-    // reads are the user asking anyway, so they always go through.
-    if (!_manualRequested && MotionMonitor.instance.isMoving) {
+    // A moving phone produces blurred frames. Text reading waits for the hand
+    // to settle; object mode keeps scanning, because panning is how a blind
+    // user searches for something. It runs slower and stays silent until the
+    // hand stops, so a blurred frame is analysed but never described.
+    final moving = MotionMonitor.instance.isMoving;
+    if (moving && !_manualRequested && _objectOnRequest == null) {
+      // A long scan gets one "hold still" hint. A direct request does not:
+      // the user is already waiting for an answer.
       _noteMovement(now);
-      return;
+      if (_interpretation != Interpretation.object) return;
+    } else if (!moving) {
+      _movingSince = null;
     }
-    _movingSince = null;
 
     // Object mode: the camera feeds YOLO instead of the text recogniser.
     if (_interpretation == Interpretation.object || _objectOnRequest != null) {
       final manual = _manualRequested || _objectOnRequest != null;
       _manualRequested = false;
 
+      // A sustained pan is a new view. Forget what the old view said so the
+      // new one is described when the hand stops, even if it happens to
+      // contain the same kind of object at the same distance.
+      if (!manual &&
+          moving &&
+          _movingSince != null &&
+          now.difference(_movingSince!) >= _objectScanResetAfter) {
+        _describedObjectCounts = <String, int>{};
+      }
+
       final canNarrate =
           !AudioBus.instance.hasReading &&
           !AudioBus.instance.speaking.value &&
           !AudioBus.instance.isMuted;
-      final due = now.difference(_lastObjectAt) >= _objectMinGap;
+      final due =
+          now.difference(_lastObjectAt) >=
+          (moving ? _objectMovingGap : _objectMinGap);
       final devDue =
           developerMode &&
           now.difference(_lastObjectAt) >= const Duration(milliseconds: 250);
 
-      if (!manual && !devDue && (!due || !canNarrate)) {
+      // Detection stays warm while a sentence is being spoken: the tracker
+      // can confirm the next object during playback, so scanning does not go
+      // blind for the length of every description. Muting is different; there
+      // is no answer to prepare, so the work is skipped.
+      if (!manual && !devDue && (!due || AudioBus.instance.isMuted)) {
         if (kDebugMode &&
             now.difference(_lastObjectDiagAt) > const Duration(seconds: 3)) {
           _lastObjectDiagAt = now;
@@ -334,7 +384,7 @@ class FramePipeline {
             'muted=${AudioBus.instance.isMuted} '
             'speaking=${AudioBus.instance.speaking.value} '
             'reading=${AudioBus.instance.hasReading} '
-            'moving=${MotionMonitor.instance.isMoving}',
+            'moving=$moving',
           );
         }
         return;
@@ -687,7 +737,8 @@ class FramePipeline {
 
   /// Runs YOLO on one frame and, if useful, speaks the objects it finds.
   ///
-  /// Live narration is throttled to [_objectMinGap]. Manual double-tap always
+  /// Automatic narration is paced by [_objectNarrationGap] and speaks only
+  /// objects that were not already described. Manual double-tap always
   /// answers, including with "I cannot see any object clearly".
   ///
   /// A live answer must first be confirmed by [_objectTracker] so a one-frame
@@ -717,7 +768,9 @@ class FramePipeline {
       jpeg,
       // A side question asks about one half of the view, so a slightly larger
       // pool is needed to find an object there before the list is trimmed.
-      maxObjects: sideQuestion ? 8 : (developerMode ? 15 : 3),
+      // A manual request is a scene question, so it gets a wider answer than
+      // the live three-object narration.
+      maxObjects: sideQuestion ? 8 : (developerMode ? 15 : (manual ? 5 : 3)),
       lenient: manual || developerMode || sideQuestion,
     );
     if (kDebugMode) {
@@ -755,8 +808,8 @@ class FramePipeline {
     final hindi = _language.isHindi;
 
     if (confirmed.isEmpty) {
+      _describedObjectCounts = <String, int>{};
       if (!manual) return;
-      _lastObjectSignature = '';
       _lastObjectSpokenAt = DateTime.now();
       final text = noObjectsMessage(hindi: hindi);
       onResult(text);
@@ -767,36 +820,71 @@ class FramePipeline {
     }
 
     final now = DateTime.now();
-    // In developer mode or continuous cadence, narration still throttles to avoid spamming.
+    final settled = !MotionMonitor.instance.isMoving;
+
+    // Group what Cue can describe. A group is a spoken sentence: class,
+    // direction and distance band (the description itself splits a group
+    // further by colour). A group whose count rose (a new object, or a second
+    // one beside the first) is worth one sentence; a scene that has not
+    // changed is silence. Manual requests always describe the whole scene.
+    final describable = confirmed.take(5).toList(growable: false);
+    final groups = <String, List<DetectedObject>>{};
+    for (final object in describable) {
+      groups
+          .putIfAbsent(_objectKey(object), () => <DetectedObject>[])
+          .add(object);
+    }
+    final currentCounts = <String, int>{
+      for (final entry in groups.entries) entry.key: entry.value.length,
+    };
+    // Objects that have left the view are forgotten, so coming back to a
+    // shelf after looking away describes it again instead of staying silent.
+    _describedObjectCounts = <String, int>{
+      for (final entry in _describedObjectCounts.entries)
+        if (currentCounts[entry.key] != null)
+          entry.key: entry.value < currentCounts[entry.key]!
+              ? entry.value
+              : currentCounts[entry.key]!,
+    };
+    final increased = groups.entries
+        .where(
+          (entry) =>
+              entry.value.length > (_describedObjectCounts[entry.key] ?? 0),
+        )
+        .toList(growable: false);
+
     final due =
         _lastObjectSpokenAt == null ||
-        now.difference(_lastObjectSpokenAt!) >= _objectMinGap;
+        now.difference(_lastObjectSpokenAt!) >= _objectNarrationGap;
     final canNarrate =
         !AudioBus.instance.hasReading &&
         !AudioBus.instance.speaking.value &&
         !AudioBus.instance.isMuted;
-    if (!manual && (!due || !canNarrate)) return;
+    if (!manual && (!due || !canNarrate || !settled)) return;
 
-    // Three things is already a lot to listen to; more is noise.
-    final spoken = confirmed.take(3).toList(growable: false);
-    final message = objectDescription(spoken, hindi: hindi);
-    final signature = _objectSignature(spoken);
-    final repeated =
-        signature == _lastObjectSignature &&
-        _lastObjectSpokenAt != null &&
-        now.difference(_lastObjectSpokenAt!) < _objectRepeatGap;
+    // Three sentences is already a lot to listen to; more is noise. The whole
+    // group is included, so a newly counted pair is said as a pair.
+    final selected = manual
+        ? groups.entries.toList(growable: false)
+        : increased.take(3).toList(growable: false);
+    final spoken = <DetectedObject>[
+      for (final group in selected) ...group.value,
+    ];
+    if (spoken.isEmpty) return;
 
-    if (!manual && repeated) return;
-
-    _lastObjectSignature = signature;
     _lastObjectSpokenAt = now;
+    for (final group in selected) {
+      _describedObjectCounts[group.key] = currentCounts[group.key]!;
+    }
+
+    final message = objectDescription(spoken, hindi: hindi);
 
     // Field diagnostics: a wrong colour is invisible in a release build, and
     // this line is the only record of what Cue sampled.
     debugPrint(
       'live: objects '
       '${confirmed.map((object) => object.toString()).join('; ')} '
-      'manual=$manual',
+      'manual=$manual increased=${increased.length}',
     );
 
     onResult(message);
@@ -805,19 +893,16 @@ class FramePipeline {
     );
   }
 
-  /// A compact fingerprint of what was described, so repeating the same scene
-  /// is silenced but a moved object is not.
-  String _objectSignature(List<DetectedObject> objects) {
-    return objects
-        .map((object) {
-          final metres = object.distanceMeters;
-          final band = metres == null ? '?' : (metres * 2).round().toString();
-          // The colour is part of what was said, so pointing at a blue mug
-          // after a red one must not be swallowed as a repeat.
-          final colour = object.colour?.toString() ?? '-';
-          return '${object.name}:${object.direction.index}:$band:$colour';
-        })
-        .join('|');
+  /// The part of a description that makes it worth saying again.
+  ///
+  /// Class, direction and distance band. Confidence and exact pixels are
+  /// deliberately absent: they wobble every pass, and narrating that wobble
+  /// would make a still scene sound as if it were moving. Colour is part of
+  /// the sentence but not the key, for the same reason: one flickering sample
+  /// should not re-announce an object the user has already been told about.
+  String _objectKey(DetectedObject object) {
+    final band = englishDistancePhrase(object.distanceMeters) ?? '?';
+    return '${object.name}|${object.direction.index}|$band';
   }
 
   /// Makes sure the voice matches the script being read.
@@ -937,10 +1022,14 @@ class FramePipeline {
   /// Says "hold still" only after the phone has been moving for a while.
   ///
   /// Movement itself is silent: the user may be walking. A sentence is only
-  /// worth it when blurred frames are blocking the reading.
+  /// worth it when blurred frames are blocking the reading, or when object
+  /// mode is scanning and needs a steady frame before it can describe one.
   void _noteMovement(DateTime now) {
     _movingSince ??= now;
-    if (_interpretation != Interpretation.text) return;
+    if (_interpretation != Interpretation.text &&
+        _interpretation != Interpretation.object) {
+      return;
+    }
     if (now.difference(_movingSince!) < const Duration(seconds: 2)) return;
     if (AudioBus.instance.isMuted ||
         AudioBus.instance.speaking.value ||

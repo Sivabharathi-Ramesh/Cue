@@ -249,7 +249,7 @@ class CueStrings {
 
   String get objectModeAnnouncement => _hi
       ? 'वस्तु मोड।'
-      : 'Object mode.';
+      : 'Object mode. Point the camera at an object.';
 
   String get textModeAnnouncement => _hi
       ? 'पाठ मोड।'

@@ -64,6 +64,11 @@ class DetectedObject {
   /// It is deliberately coarse. A bottle seen end-on, a person sitting down,
   /// or a cropped object all break the assumption, so Cue only ever speaks
   /// rounded bands from this number.
+  ///
+  /// Small objects are only estimated while they are close enough for the box
+  /// to be meaningful. A mug covering 2% of the frame could be a mug across
+  /// the room or a poster of one; pretending to know which is worse than
+  /// leaving the distance out.
   double? get distanceMeters {
     final realHeight = realHeights[name];
     if (realHeight == null) return null;
@@ -73,7 +78,12 @@ class DetectedObject {
 
     final metres = realHeight * _focalOverFrameHeight / fraction;
     if (!metres.isFinite || metres <= 0) return null;
-    return metres.clamp(0.3, 15.0);
+
+    final limit = realHeight < _smallObjectHeight
+        ? _maxSmallObjectDistance
+        : _maxObjectDistance;
+    if (metres > limit) return null;
+    return metres.clamp(0.3, limit);
   }
 
   /// Whether this class stands upright in the real world.
@@ -94,6 +104,12 @@ class DetectedObject {
 /// 50 degree vertical field of view. Kept as one constant so the estimate can
 /// be tuned in one place.
 const double _focalOverFrameHeight = 1.05;
+
+/// Anything shorter than this (in metres) is treated as a small, close-range
+/// object. Beyond [_maxSmallObjectDistance] its box is too small to trust.
+const double _smallObjectHeight = 0.25;
+const double _maxSmallObjectDistance = 6.0;
+const double _maxObjectDistance = 15.0;
 
 /// Classes that are plausible household/everyday objects but are often
 /// mistaken by an object detector. An ordinary shoe or pencil case is allowed
@@ -121,6 +137,28 @@ const Set<String> strictObjectClasses = {
   'bowl',
   'book',
   'box',
+  // Small desk and bathroom things. These are the classes the detector
+  // reaches for when it sees texture rather than an object, so they need more
+  // evidence before a blind user is told what they are holding.
+  'pen',
+  'pencil',
+  'eraser',
+  'marker',
+  'ruler',
+  'charger',
+  'earphones',
+  'headphones',
+  'pencil case',
+  'notebook',
+  'paper',
+  'light switch',
+  'power socket',
+  'remote control',
+  'toothbrush',
+  'hairbrush',
+  'comb',
+  'soap',
+  'towel',
 };
 
 /// Confidence a strict class must reach before it is spoken.
@@ -135,7 +173,8 @@ const double strictManualClassConfidence = 0.68;
 /// Approximate real-world heights in metres for classes where height is a
 /// stable, meaningful measure. Flat things (pizza, keyboard, skateboard) and
 /// long diagonal things (skis, surfboard) are deliberately absent: their box
-/// height says almost nothing about distance.
+/// height says almost nothing about distance. So are classes whose label covers
+/// very different sizes, such as "fan" (a table fan or a ceiling fan overhead).
 const Map<String, double> realHeights = {
   'person': 1.70,
   'bicycle': 1.00,
@@ -158,10 +197,21 @@ const Map<String, double> realHeights = {
   'toilet': 0.75,
   'tv': 0.55,
   'laptop': 0.25,
+  'computer mouse': 0.05,
+  'headphones': 0.20,
+  'pencil case': 0.07,
+  'marker': 0.12,
+  'notebook': 0.21,
+  'flashlight': 0.15,
+  'shirt': 0.65,
+  't-shirt': 0.65,
+  'sock': 0.10,
+  'jacket': 0.70,
   'book': 0.24,
   'bottle': 0.25,
   'wine glass': 0.18,
   'cup': 0.10,
+  'glass': 0.14,
   'bowl': 0.09,
   'fork': 0.18,
   'knife': 0.25,
@@ -210,6 +260,9 @@ const Map<String, double> realHeights = {
   'scissors': 0.20,
   'teddy bear': 0.40,
   'hair drier': 0.20,
+  'hairbrush': 0.20,
+  'towel': 0.60,
+  'first aid kit': 0.25,
   'toothbrush': 0.18,
   'cell phone': 0.15,
   'mobile phone': 0.15,

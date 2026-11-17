@@ -221,6 +221,12 @@ VoiceCommand parseVoiceCommand(String transcript) {
       has('what s that') ||
       has('what do you see') ||
       has('what can you see') ||
+      has('what is in front of me') ||
+      has('what s in front of me') ||
+      has('what is in front of you') ||
+      has('what is ahead') ||
+      has('describe the scene') ||
+      has('describe what you see') ||
       has('यह क्या') ||
       has('ये क्या') ||
       has('वह क्या') ||

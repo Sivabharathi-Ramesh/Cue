@@ -31,6 +31,8 @@ There is no semantic model, no embedding, no context memory beyond the current m
 | “can you read this for me” | `readNow` ✅ |
 | “please read the page” | `readNow` ✅ |
 | “what do you see” | `whatIsThis` ✅ |
+| “what’s in front of me” | `whatIsThis` ✅ |
+| “describe the scene” | `whatIsThis` ✅ |
 | “how much battery is left” | `battery` ✅ |
 | “where am I right now” | `location` ✅ |
 | “tell me the time please” | `currentTime` ✅ |
@@ -51,8 +53,6 @@ There is no semantic model, no embedding, no context memory beyond the current m
 
 | Phrase | Result | Why |
 |---|---|---|
-| “what’s in front of me” | `unknown` | No phrase for it |
-| “describe the scene” | `unknown` | No scene-description intent |
 | “how far is the cup” | `unknown` | Distance exists in object mode but not as a question |
 | “what is the expiry date on this medicine” | `unknown` | No slot extraction |
 | “read the expiry date” | `readNow` | Reads the page, does not extract the date |
@@ -76,7 +76,7 @@ Those last two are the most important. Negation is a safety issue, not a polish 
 - **Offline.** Works in a room with no signal.
 - **Private.** The transcript never leaves the phone.
 - **Honest.** When it does not understand, it says so instead of inventing an answer.
-- **Testable.** Every phrase can be a unit test; you already have 293 tests.
+- **Testable.** Every phrase can be a unit test; you already have 300+ tests.
 
 An LLM would make the app feel more conversational, but it would also make it slower, online-dependent, less predictable, and capable of a confident wrong answer. That trade is wrong for reading a medicine label.
 
@@ -86,9 +86,10 @@ An LLM would make the app feel more conversational, but it would also make it sl
 
 ### 1. Alias coverage (1–2 days, low risk)
 
-Add the phrases real users actually say. Start with the failures above:
+Add the phrases real users actually say. The scene-description aliases below are
+already covered by `whatIsThis`; the rest remain:
 
-- `what's in front of me`, `what is in front of me`, `describe what you see`, `describe the scene`
+- ✅ `what's in front of me`, `what is in front of me`, `describe what you see`, `describe the scene`
 - `how far is it`, `how far is the cup`, `is it close`
 - `I don't understand`, `I didn't get that`, `what?`
 - (Later, after English is validated) Latin Hinglish: `padho`, `padh do`, `batao`, `kya hai`, `kahan hoon`, `kitna`, `kitna bacha`, `dikhao`, `ruko`, `phir se`, `dheere`, `tez`, `aaj kaun sa din`, `meri baayi or`, `meri daayi or`

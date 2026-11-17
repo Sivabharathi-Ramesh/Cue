@@ -75,7 +75,7 @@ class ObjectDetectService {
   ///
   ///  * a high-confidence object is spoken on its own;
   ///  * lower-confidence objects are only spoken when at least two different
-  ///    classes agree that *something* is there;
+  ///    ordinary classes agree that *something* is there;
   ///  * boxes that are too small, too large, or the wrong shape for the class
   ///    are thrown away before anything is said.
   Future<List<DetectedObject>> detect(
@@ -135,11 +135,23 @@ class ObjectDetectService {
       final strong = unique
           .where((object) => _isStrong(object, lenient))
           .toList();
+      // The fallback exists so two ordinary classes can agree that *something*
+      // is there when neither is strong. A strict or risky label is exactly
+      // the kind that must not borrow confidence from a neighbour, so it is
+      // not allowed into that pool.
       final moderate = unique
-          .where((object) => object.confidence >= (lenient ? 0.40 : 0.45))
+          .where(
+            (object) =>
+                !strictObjectClasses.contains(object.name) &&
+                !riskyObjectClasses.contains(object.name) &&
+                object.confidence >= (lenient ? 0.40 : 0.45),
+          )
           .toList();
 
-      final chosen = maxObjects > 3
+      // A pooled answer (side question or developer overlay) returns more of
+      // the raw detections. A scene answer stays on the same honesty bar as
+      // live narration: more names are useful, weak names are not.
+      final chosen = maxObjects > 5
           ? unique.where((o) => o.confidence >= 0.30).toList()
           : (strong.isNotEmpty
                 ? strong

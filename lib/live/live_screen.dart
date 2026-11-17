@@ -1315,14 +1315,10 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
           ),
         );
       case VoiceCommand.whatIsThis:
-        // In object mode the natural answer is the last description, in text
-        // mode it is a fresh read. The screen is the only place that knows
-        // which mode is active.
-        if (_pipeline.interpretation == Interpretation.object) {
-          _repeat();
-        } else {
-          _activate();
-        }
+        // Ask the camera again. Repeating the last sentence would describe
+        // whatever was in view before the user moved the phone, which is the
+        // one thing a "what is this?" question is not asking about.
+        _activate();
       case VoiceCommand.showPreview:
         _showPreview();
         unawaited(
