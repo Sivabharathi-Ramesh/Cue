@@ -6,9 +6,14 @@ import 'detected_object.dart';
 ///
 /// A single YOLO pass on a blank wall will occasionally invent a "person" or a
 /// "tv". Speaking that is what makes the mode feel random to a blind user. An
-/// object now has to survive [passesToConfirm] consecutive passes, and once
-/// trusted it stays trusted for [passesToForget] misses so a nudge of the
-/// camera does not make a real chair disappear mid-sentence.
+/// object now has to survive [passesToConfirm] consecutive passes with the same
+/// spoken label, and once trusted it stays trusted for [passesToForget] misses
+/// so a nudge of the camera does not make a real chair disappear mid-sentence.
+///
+/// Matching on the spoken label, not the raw class, is deliberate. A comb that
+/// flips to "knife" and back is one physical object; if both frames were
+/// relabelled "small object", the track should continue as "small object"
+/// rather than start again on every flicker.
 ///
 /// Objects are tracked as *instances*, not by class name. Two chairs are two
 /// things a user can walk into, so collapsing them into one "chair" is not an
@@ -21,7 +26,7 @@ import 'detected_object.dart';
 /// sound new. Smoothing damps that without hiding genuine movement.
 class ObjectTracker {
   ObjectTracker({
-    this.passesToConfirm = 2,
+    this.passesToConfirm = 3,
     this.passesToForget = 2,
     this.smoothing = 0.55,
   });
@@ -62,7 +67,7 @@ class ObjectTracker {
 
       for (final track in _tracks.values) {
         if (observed.contains(track.id)) continue;
-        if (track.object.name != detection.name) continue;
+        if (track.object.label != detection.label) continue;
 
         final score = _matchScore(track.object, detection);
         if (score > bestScore) {
@@ -189,6 +194,9 @@ class _Track {
       // Colour is sampled per frame. Keeping the last known reading avoids
       // losing the colour entirely when one frame is too small to sample.
       colour: next.colour ?? object.colour,
+      // Certainty can improve or degrade between frames; the current frame's
+      // label is the one the track is now matching on.
+      spokenAs: next.spokenAs,
     );
     hits++;
     misses = 0;

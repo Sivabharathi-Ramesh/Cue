@@ -25,7 +25,7 @@ Cue is designed for the person who cannot see the screen at all: one live camera
 ## 3. The solution
 
 - **Live reading:** point the camera at printed text; Cue speaks it sentence by sentence, with pause, repeat, next, previous, and progress.
-- **Object mode:** names newly seen objects as they appear, or up to five on request, with colour, left/ahead/right direction, and a coarse distance.
+- **Object mode:** names newly seen objects as they appear, or up to five on request, with colour, left/ahead/right direction, and a coarse distance when the object has a stable height.
 - **Direct questions:** “what is on my left?”, “what colour is this?”, “what time is it?”, “where am I?”, “battery?”
 - **Honest failure:** if the text is handwritten or unreadable, Cue says it cannot read it rather than guessing.
 - **Offline and private:** no account, no upload, no images or audio stored.

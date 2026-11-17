@@ -204,7 +204,17 @@ String objectDescription(
   if (objects.isEmpty) return '';
 
   if (hindi) {
-    return objects
+    // Hindi is frozen for the pilot, so there is no Hindi label for the
+    // generic "small object" / "writing tool" fallbacks. Speaking the English
+    // fallback inside a Hindi sentence would be worse, and speaking the raw
+    // class would undo the point of the fallback. Omit those objects; the
+    // caller says the existing "unrecognised object" line when nothing else
+    // is left.
+    final describable = objects
+        .where((object) => !object.isAmbiguous)
+        .toList(growable: false);
+    if (describable.isEmpty) return '';
+    return describable
         .map((object) => _hindiObject(object, includeDistance))
         .join(' ');
   }
@@ -235,27 +245,26 @@ class _EnglishGroup {
 }
 
 String _englishGroupKey(DetectedObject object, bool includeDistance) {
-  final colour = objectSpeaksColour(object.name) && object.colour != null
+  final colour = objectSpeaksColour(object.label) && object.colour != null
       ? englishColourName(object.colour!)
       : '-';
   final distance = includeDistance
-      ? englishDistancePhrase(object.distanceMeters) ?? '?'
+      ? englishObjectDistancePhrase(object) ?? '?'
       : '?';
-  return '${object.name}|${object.direction.index}|$distance|$colour';
+  return '${object.label}|${object.direction.index}|$distance|$colour';
 }
 
 String _englishGroup(_EnglishGroup group, bool includeDistance) {
   final object = group.object;
-  final colour = objectSpeaksColour(object.name) ? object.colour : null;
+  final label = object.label;
+  final colour = objectSpeaksColour(label) ? object.colour : null;
   final descriptor = colour == null ? '' : '${englishColourName(colour)} ';
 
   final name = group.count == 1
-      ? _capitalise('$descriptor${object.name}')
+      ? _capitalise('$descriptor$label')
       : '${_capitalise(_numberWord(group.count))} $descriptor'
-            '${englishPluralObjectLabel(object.name, group.count)}';
-  final distance = includeDistance
-      ? englishDistancePhrase(object.distanceMeters)
-      : null;
+            '${englishPluralObjectLabel(label, group.count)}';
+  final distance = includeDistance ? englishObjectDistancePhrase(object) : null;
 
   switch (object.direction) {
     case ObjectDirection.ahead:
@@ -339,8 +348,8 @@ String _numberWord(int count) {
 }
 
 String _hindiObject(DetectedObject object, bool includeDistance) {
-  final base = englishToHindiObjectLabels[object.name] ?? object.name;
-  final colour = objectSpeaksColour(object.name) ? object.colour : null;
+  final base = englishToHindiObjectLabels[object.label] ?? object.label;
+  final colour = objectSpeaksColour(object.label) ? object.colour : null;
   final name = colour == null ? base : '${hindiColourName(colour)} $base';
   final direction = switch (object.direction) {
     ObjectDirection.ahead => 'सामने',
@@ -408,19 +417,28 @@ String nothingOnSide(ObjectDirection side, {required bool hindi}) {
 
 /// Coarse spoken distance for English.
 ///
-/// Rounded halves, because a pinhole estimate taken from a bounding box is
-/// not accurate to the metre and should not sound as if it is.
+/// Bands, not metres. Even for a class with a stable upright height, a
+/// bounding-box estimate on a single phone camera is wrong by a factor, not a
+/// rounding error. "A couple of metres away" is something the user can act on;
+/// "2.3 metres" pretends to a precision Cue does not have.
 String? englishDistancePhrase(double? metres) {
   if (metres == null) return null;
   if (metres < 0.6) return 'very close';
-  if (metres < 1.2) return 'about a metre away';
+  if (metres < 1.5) return 'about a metre away';
+  if (metres < 3.0) return 'a couple of metres away';
+  if (metres < 6.0) return 'several metres away';
+  if (metres < 10.0) return 'across the room';
+  return 'far away';
+}
 
-  final halves = (metres * 2).round();
-  if (halves.isOdd) {
-    final whole = halves ~/ 2;
-    return 'about $whole and a half metres away';
-  }
-  return 'about ${halves ~/ 2} metres away';
+/// The distance part of a spoken description, including the cropped case.
+///
+/// A box cut off by the top or bottom of the frame cannot produce an honest
+/// number, but "partly out of view" is useful: it tells the user to move the
+/// camera back rather than to walk forward.
+String? englishObjectDistancePhrase(DetectedObject object) {
+  if (object.isVerticallyCropped) return 'partly out of view';
+  return englishDistancePhrase(object.distanceMeters);
 }
 
 /// Coarse spoken distance for Hindi.

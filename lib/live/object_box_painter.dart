@@ -55,9 +55,12 @@ class ObjectBoundingBoxesPainter extends CustomPainter {
       // 3. Label text: Name + Confidence % (+ distance if known)
       final confPercent = (object.confidence * 100).round();
       final dist = object.distanceMeters;
+      final name = object.isAmbiguous
+          ? '${object.label}? (${object.name})'
+          : object.name;
       final label = dist != null
-          ? '${object.name.toUpperCase()} $confPercent% • ${dist.toStringAsFixed(1)}m'
-          : '${object.name.toUpperCase()} $confPercent%';
+          ? '${name.toUpperCase()} $confPercent% • ${dist.toStringAsFixed(1)}m'
+          : '${name.toUpperCase()} $confPercent%';
 
       final textSpan = TextSpan(
         text: label,
@@ -114,7 +117,10 @@ class ObjectBoundingBoxesPainter extends CustomPainter {
     for (var i = 0; i < objects.length; i++) {
       final a = objects[i];
       final b = oldDelegate.objects[i];
-      if (a.name != b.name || a.confidence != b.confidence || a.box != b.box) {
+      if (a.name != b.name ||
+          a.spokenAs != b.spokenAs ||
+          a.confidence != b.confidence ||
+          a.box != b.box) {
         return true;
       }
     }

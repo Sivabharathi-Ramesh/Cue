@@ -128,7 +128,7 @@ Keep a small stack of the last intent and result:
 - “and on the left?” after a side question → `whatIsLeft`.
 - “again” after any answer → repeat.
 - “what about the price?” after reading a bill → `readPrice`.
-- “is it close?” after an object description → answer from the last distance.
+- “is it close?” after an object description → answer from the last distance band, if Cue gave one.
 
 A few explicit rules beat an LLM here: predictable, testable, offline.
 

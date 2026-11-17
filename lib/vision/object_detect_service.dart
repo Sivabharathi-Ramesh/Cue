@@ -122,10 +122,18 @@ class ObjectDetectService {
 
       objects.sort((a, b) => b.confidence.compareTo(a.confidence));
 
+      // Two classes can land on the same box with almost the same score. For
+      // fine-grained classes that is a near-tie, not an answer: comb vs knife,
+      // marker vs pen. Replace the name with a safe group label before the
+      // rest of the pipeline sees it.
+      final resolved = <DetectedObject>[
+        for (final object in objects) resolveObjectAmbiguity(object, objects),
+      ];
+
       // Two classes on the same box ("cup" and "bottle" on one dinner table)
       // are one thing, not two. Keep the more confident label.
       final unique = <DetectedObject>[];
-      for (final object in objects) {
+      for (final object in resolved) {
         final duplicate = unique.any(
           (kept) => _iou(kept.box, object.box) >= 0.55,
         );

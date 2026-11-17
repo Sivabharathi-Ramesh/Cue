@@ -872,12 +872,26 @@ class FramePipeline {
     ];
     if (spoken.isEmpty) return;
 
+    final message = objectDescription(spoken, hindi: hindi);
+    if (message.isEmpty) {
+      // Hindi is frozen, so an object whose name was too close to call has no
+      // Hindi sentence. Silence is right for automatic narration; a manual
+      // request still gets the existing "unrecognised object" line.
+      if (manual) {
+        _lastObjectSpokenAt = now;
+        final fallback = _strings.somethingThere;
+        onResult(fallback);
+        unawaited(
+          AudioBus.instance.say(fallback, priority: SpeechPriority.navigation),
+        );
+      }
+      return;
+    }
+
     _lastObjectSpokenAt = now;
     for (final group in selected) {
       _describedObjectCounts[group.key] = currentCounts[group.key]!;
     }
-
-    final message = objectDescription(spoken, hindi: hindi);
 
     // Field diagnostics: a wrong colour is invisible in a release build, and
     // this line is the only record of what Cue sampled.
@@ -901,8 +915,8 @@ class FramePipeline {
   /// the sentence but not the key, for the same reason: one flickering sample
   /// should not re-announce an object the user has already been told about.
   String _objectKey(DetectedObject object) {
-    final band = englishDistancePhrase(object.distanceMeters) ?? '?';
-    return '${object.name}|${object.direction.index}|$band';
+    final band = englishObjectDistancePhrase(object) ?? '?';
+    return '${object.label}|${object.direction.index}|$band';
   }
 
   /// Makes sure the voice matches the script being read.

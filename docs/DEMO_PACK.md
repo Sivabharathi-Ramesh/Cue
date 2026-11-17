@@ -61,7 +61,7 @@ That answer is stronger than a rushed Hindi demo.
 1. **Set the stage.** “Everything you are about to see works with no internet.” Turn on airplane mode and show the screen to the room.
 2. **Close your eyes.** Hold volume-down for half a second, say “read,” let go. Hold a medicine strip or a printed bill in front of the camera.
 3. **Let it read two or three sentences.** Then say “stop” (or swipe up). Do not let it read a whole page in silence.
-4. **Object mode.** Swipe sideways to Object. Hold a clear object — a blue mug, a bottle, a book — about 30–50 cm away. Say “what is this?” or double-tap. Let it say the name, colour, direction, and rough distance.
+4. **Object mode.** Swipe sideways to Object. Hold a clear object — a blue mug or a bottle — about 30–50 cm away. Say “what is this?” or double-tap. Let it say the name, colour, direction, and a rough distance when it can estimate one.
 5. **A side question.** “What is on my left?” Show that it can answer a direct spatial question.
 6. **The failure case.** Point at a handwritten note (the refusal is expected) or a blank wall. Let Cue say it cannot read the marks. Then say: “That is the safety feature. A blind user cannot check a wrong medicine label. Cue refuses rather than guesses. Printed text is the pilot scope; handwriting is Phase 2.”
 7. **The dark screen.** Let the preview fade to black. Explain: “The screen is for sighted helpers. It goes dark for privacy and battery. The phone keeps working.”

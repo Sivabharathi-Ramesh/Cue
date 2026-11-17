@@ -14,12 +14,14 @@ DetectedObject objectAt(
   double width = 0.2,
   double height = 0.4,
   ColourReading? colour,
+  String? spokenAs,
 }) {
   return DetectedObject(
     name: name,
     confidence: confidence,
     box: Rect.fromLTWH(left, top, width, height),
     colour: colour,
+    spokenAs: spokenAs,
   );
 }
 
@@ -40,12 +42,12 @@ void main() {
       expect(object.direction, ObjectDirection.right);
     });
 
-    test('a person filling half the frame is about three metres away', () {
+    test('a person filling half the frame is a couple of metres away', () {
       final person = objectAt('person', height: 0.6);
       final distance = person.distanceMeters;
       expect(distance, isNotNull);
       expect(distance!, closeTo(2.98, 0.1));
-      expect(englishDistancePhrase(distance), 'about 3 metres away');
+      expect(englishDistancePhrase(distance), 'a couple of metres away');
     });
 
     test('a close bottle reads as about a metre', () {
@@ -61,26 +63,97 @@ void main() {
       expect(pizza.distanceMeters, isNull);
     });
 
-    test('small everyday classes now report a close distance', () {
-      final notebook = objectAt('notebook', height: 0.2);
-      expect(notebook.distanceMeters, isNotNull);
-      expect(
-        englishDistancePhrase(notebook.distanceMeters),
-        'about a metre away',
-      );
-
-      final headphones = objectAt('headphones', height: 0.2);
-      expect(headphones.distanceMeters, isNotNull);
+    test('thin and flat everyday classes have no honest distance', () {
+      // Their box height is thickness, not length. The old table borrowed a
+      // knife's height for a comb and reported metres that were pure fiction.
+      for (final name in ['comb', 'marker', 'pen', 'knife', 'notebook']) {
+        expect(
+          objectAt(name, height: 0.3).distanceMeters,
+          isNull,
+          reason: '$name must not get a bounding-box distance',
+        );
+      }
     });
 
     test('a tiny box far away is refused rather than guessed', () {
-      final notebook = objectAt('notebook', height: 0.031);
-      expect(notebook.distanceMeters, isNull);
+      final bottle = objectAt('bottle', height: 0.031);
+      expect(bottle.distanceMeters, isNull);
     });
 
-    test('a box that fills the whole frame still estimates, clamped', () {
-      final wall = objectAt('car', height: 1.0);
-      expect(wall.distanceMeters, closeTo(1.575, 0.01));
+    test('a cropped box gets no numeric distance', () {
+      final chair = objectAt('chair', top: 0.0, height: 1.0);
+      expect(chair.isVerticallyCropped, isTrue);
+      expect(chair.distanceMeters, isNull);
+      expect(englishObjectDistancePhrase(chair), 'partly out of view');
+    });
+
+    test('distance is spoken in honest bands, not false precision', () {
+      expect(englishDistancePhrase(0.4), 'very close');
+      expect(englishDistancePhrase(1.0), 'about a metre away');
+      expect(englishDistancePhrase(2.1), 'a couple of metres away');
+      expect(englishDistancePhrase(4.0), 'several metres away');
+      expect(englishDistancePhrase(8.0), 'across the room');
+      expect(englishDistancePhrase(14.0), 'far away');
+    });
+  });
+
+  group('resolveObjectAmbiguity', () {
+    test('a comb and a knife on one box become a small object', () {
+      final comb = objectAt('comb', confidence: 0.80);
+      final knife = objectAt('knife', confidence: 0.70);
+      final resolved = resolveObjectAmbiguity(comb, [comb, knife]);
+
+      expect(resolved.isAmbiguous, isTrue);
+      expect(resolved.label, 'small object');
+      expect(resolved.name, 'comb');
+      expect(resolved.distanceMeters, isNull);
+    });
+
+    test('a clear winner keeps its name', () {
+      final comb = objectAt('comb', confidence: 0.92);
+      final knife = objectAt('knife', confidence: 0.62);
+      final resolved = resolveObjectAmbiguity(comb, [comb, knife]);
+
+      expect(resolved.isAmbiguous, isFalse);
+      expect(resolved.label, 'comb');
+    });
+
+    test('candidates in the same family keep the family name', () {
+      final comb = objectAt('comb', confidence: 0.80);
+      final brush = objectAt('hairbrush', confidence: 0.72);
+      expect(
+        resolveObjectAmbiguity(comb, [comb, brush]).label,
+        'grooming item',
+      );
+
+      final marker = objectAt('marker', confidence: 0.80);
+      final pen = objectAt('pen', confidence: 0.74);
+      expect(
+        resolveObjectAmbiguity(marker, [marker, pen]).label,
+        'writing tool',
+      );
+
+      final knife = objectAt('knife', confidence: 0.80);
+      final fork = objectAt('fork', confidence: 0.72);
+      expect(resolveObjectAmbiguity(knife, [knife, fork]).label, 'utensil');
+    });
+
+    test('a competing box elsewhere in the frame is ignored', () {
+      final comb = objectAt('comb', confidence: 0.80, left: 0.1);
+      final knife = objectAt('knife', confidence: 0.78, left: 0.7);
+      final resolved = resolveObjectAmbiguity(comb, [comb, knife]);
+
+      expect(resolved.isAmbiguous, isFalse);
+      expect(resolved.label, 'comb');
+    });
+
+    test('a non-confusable class is never relabelled', () {
+      final chair = objectAt('chair', confidence: 0.80);
+      final table = objectAt('table', confidence: 0.78);
+      expect(
+        resolveObjectAmbiguity(chair, [chair, table]).isAmbiguous,
+        isFalse,
+      );
     });
   });
 
@@ -89,7 +162,7 @@ void main() {
       final chair = objectAt('chair', height: 0.45, left: 0.05, width: 0.2);
       expect(
         objectDescription([chair], hindi: false),
-        'Chair, about 2 metres away, to your left.',
+        'Chair, a couple of metres away, to your left.',
       );
     });
 
@@ -97,7 +170,7 @@ void main() {
       final chair = objectAt('chair', height: 0.45, left: 0.4, width: 0.2);
       expect(
         objectDescription([chair], hindi: false),
-        'Chair, about 2 metres away, in front of you.',
+        'Chair, a couple of metres away, in front of you.',
       );
     });
 
@@ -128,7 +201,36 @@ void main() {
 
       expect(
         objectDescription([first, second], hindi: false),
-        'Two chairs, about 2 metres away, to your left.',
+        'Two chairs, a couple of metres away, to your left.',
+      );
+    });
+
+    test('an ambiguous object is never given a confident name', () {
+      final comb = objectAt('comb', confidence: 0.8, spokenAs: 'small object');
+      final text = objectDescription([comb], hindi: false);
+
+      expect(text, contains('Small object'));
+      expect(text, isNot(contains('Comb')));
+      expect(text, isNot(contains('Knife')));
+    });
+
+    test(
+      'ambiguous objects are omitted in Hindi rather than named in English',
+      () {
+        final comb = objectAt(
+          'comb',
+          confidence: 0.8,
+          spokenAs: 'small object',
+        );
+        expect(objectDescription([comb], hindi: true), isEmpty);
+      },
+    );
+
+    test('a cropped object explains why there is no distance', () {
+      final chair = objectAt('chair', top: 0.0, height: 1.0);
+      expect(
+        objectDescription([chair], hindi: false),
+        'Chair, partly out of view, in front of you.',
       );
     });
 
@@ -259,6 +361,15 @@ void main() {
       );
     });
 
+    test('an ambiguous box can be spoken as a group at the ordinary bar', () {
+      final ambiguous = objectAt(
+        'comb',
+        confidence: 0.65,
+        spokenAs: 'small object',
+      );
+      expect(isConfidentDetection(ambiguous, lenient: false), isTrue);
+    });
+
     test('a risky class below the strict confidence is silent', () {
       expect(
         isConfidentDetection(
@@ -329,10 +440,11 @@ void main() {
   });
 
   group('ObjectTracker', () {
-    test('waits for two passes before trusting an object', () {
+    test('waits for three passes before trusting an object', () {
       final tracker = ObjectTracker();
       final chair = objectAt('chair');
 
+      expect(tracker.update([chair]), isEmpty);
       expect(tracker.update([chair]), isEmpty);
       expect(tracker.update([chair]), hasLength(1));
     });
@@ -388,6 +500,7 @@ void main() {
 
       tracker.update([chair]);
       tracker.update([chair]);
+      tracker.update([chair]);
       expect(tracker.update(const []), hasLength(1));
       expect(tracker.update(const []), isEmpty);
     });
@@ -397,6 +510,7 @@ void main() {
       final left = objectAt('chair', confidence: 0.5, left: 0.1);
       final right = objectAt('chair', confidence: 0.9, left: 0.5);
 
+      tracker.update([left, right]);
       tracker.update([left, right]);
       final confirmed = tracker.update([left, right]);
 
@@ -415,6 +529,7 @@ void main() {
       );
 
       tracker.update([box, sameBox]);
+      tracker.update([box, sameBox]);
       final confirmed = tracker.update([box, sameBox]);
 
       expect(confirmed, hasLength(1));
@@ -427,12 +542,13 @@ void main() {
       final jitter = objectAt('chair', left: 0.415, width: 0.2, height: 0.44);
 
       tracker.update([first]);
+      tracker.update([first]);
       final confirmed = tracker.update([jitter]);
 
       expect(confirmed, hasLength(1));
       expect(
         englishDistancePhrase(confirmed.single.distanceMeters),
-        'about 2 metres away',
+        'a couple of metres away',
       );
     });
 
@@ -441,6 +557,7 @@ void main() {
       final first = objectAt('chair', left: 0.4, height: 0.45);
       final moved = objectAt('chair', left: 0.46, height: 0.45);
 
+      tracker.update([first]);
       tracker.update([first]);
       expect(tracker.update([moved]), hasLength(1));
     });
@@ -452,14 +569,16 @@ void main() {
 
       tracker.update([near]);
       tracker.update([near]);
+      tracker.update([near]);
 
       // A box six times smaller is not the same chair moving a little. The
       // old track is still bridged this pass, but the new box is not trusted
-      // until it has been seen twice.
+      // until it has been seen three times.
       final old = tracker.update([far]);
       expect(old, hasLength(1));
       expect(old.single.distanceMeters, closeTo(1.575, 0.1));
 
+      expect(tracker.update([far]), isEmpty);
       final fresh = tracker.update([far]);
       expect(fresh, hasLength(1));
       expect(fresh.single.distanceMeters, closeTo(6.3, 0.2));
@@ -467,6 +586,10 @@ void main() {
 
     test('nearest object is listed first', () {
       final tracker = ObjectTracker()
+        ..update([
+          objectAt('person', height: 0.2),
+          objectAt('cup', left: 0.1, width: 0.1, height: 0.4),
+        ])
         ..update([
           objectAt('person', height: 0.2),
           objectAt('cup', left: 0.1, width: 0.1, height: 0.4),
@@ -484,10 +607,35 @@ void main() {
       final tracker = ObjectTracker();
       tracker.update([objectAt('chair')]);
       tracker.update([objectAt('chair')]);
+      tracker.update([objectAt('chair')]);
 
       tracker.reset();
 
       expect(tracker.update([objectAt('chair')]), isEmpty);
+    });
+
+    test('a label that flips between passes is not trusted', () {
+      final tracker = ObjectTracker();
+      final comb = objectAt('comb');
+      final knife = objectAt('knife');
+
+      expect(tracker.update([comb]), isEmpty);
+      expect(tracker.update([knife]), isEmpty);
+      expect(tracker.update([comb]), isEmpty);
+      expect(tracker.update([knife]), isEmpty);
+    });
+
+    test('an ambiguous label stays one track across raw-class flips', () {
+      final tracker = ObjectTracker();
+      final comb = objectAt('comb', spokenAs: 'small object');
+      final marker = objectAt('marker', spokenAs: 'small object');
+
+      expect(tracker.update([comb]), isEmpty);
+      expect(tracker.update([marker]), isEmpty);
+      final confirmed = tracker.update([comb]);
+
+      expect(confirmed, hasLength(1));
+      expect(confirmed.single.label, 'small object');
     });
   });
 }

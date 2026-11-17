@@ -361,9 +361,13 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
     final object = await scan;
     if (!mounted) return;
 
-    final text = object == null
+    final description = object == null
         ? nothingOnSide(side, hindi: hindi)
         : objectDescription(<DetectedObject>[object], hindi: hindi);
+    // Hindi is frozen and has no generic label for an ambiguous object, so a
+    // description can come back empty. The existing "unrecognised object" line
+    // is honest and needs no new string.
+    final text = description.isEmpty ? _strings.somethingThere : description;
     await AudioBus.instance.say(text, priority: SpeechPriority.answer);
   }
 
