@@ -128,6 +128,33 @@ class CueStrings {
 
   String get alreadyPaused => _hi ? 'पहले से रुका हुआ है।' : 'Already paused.';
 
+  /// The answer to "what mode am I in?".
+  String modeAnswer(String englishLabel) => _hi
+      ? 'अभी ${modeName(englishLabel)} मोड में हूँ।'
+      : 'You are in ${englishLabel.toLowerCase()} mode.';
+
+  String get languageAnswer => _hi
+      ? 'मैं हिंदी में हूँ। बदलने के लिए भाषा बदलो कहें।'
+      : 'I am using English. Say change language to switch.';
+
+  String torchStateAnswer(bool on) => on
+      ? (_hi ? 'टॉर्च चालू है।' : 'The torch is on.')
+      : (_hi ? 'टॉर्च बंद है।' : 'The torch is off.');
+
+  String speedAnswer({required bool slowest, required bool fastest}) {
+    if (slowest) {
+      return _hi ? 'यह सबसे धीमी गति है।' : 'This is the slowest speed.';
+    }
+    if (fastest) {
+      return _hi ? 'यह सबसे तेज़ गति है।' : 'This is the fastest speed.';
+    }
+    return _hi
+        ? 'यह सामान्य पढ़ने की गति है।'
+        : 'This is the normal reading speed.';
+  }
+
+  String get neverMind => _hi ? 'ठीक है।' : 'Okay.';
+
   String get alreadyRunning =>
       _hi ? 'क्यू पहले से चल रहा है।' : 'Already running.';
 
@@ -301,4 +328,14 @@ class CueStrings {
   String get actionDate => _hi ? 'तारीख बताओ' : "Tell me today's date";
 
   String get actionLocation => _hi ? 'लोकेशन बताओ' : 'Tell me my location';
+
+  String get actionBattery => _hi ? 'बैटरी बताओ' : 'Tell me the battery';
+
+  String get actionProgress => _hi ? 'कहाँ तक पढ़ा' : 'Reading progress';
+
+  String get actionColour => _hi ? 'रंग बताओ' : 'Tell me the colour';
+
+  String get actionLeft => _hi ? 'बाईं ओर क्या है' : 'What is on my left';
+
+  String get actionRight => _hi ? 'दाईं ओर क्या है' : 'What is on my right';
 }

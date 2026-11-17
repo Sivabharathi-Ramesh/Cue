@@ -293,6 +293,120 @@ void main() {
     });
   });
 
+  group('state and repair questions', () {
+    test('asking about the mode does not change it', () {
+      expect(parseVoiceCommand('what mode am I in'), VoiceCommand.whatMode);
+      expect(parseVoiceCommand('which mode is this'), VoiceCommand.whatMode);
+      expect(parseVoiceCommand('कौन सा मोड है'), VoiceCommand.whatMode);
+      expect(parseVoiceCommand('object mode'), VoiceCommand.objectMode);
+    });
+
+    test('asking about the language does not change it', () {
+      expect(
+        parseVoiceCommand('what language are you using'),
+        VoiceCommand.whichLanguage,
+      );
+      expect(
+        parseVoiceCommand('which language is this'),
+        VoiceCommand.whichLanguage,
+      );
+      expect(parseVoiceCommand('कौन सी भाषा है'), VoiceCommand.whichLanguage);
+      expect(parseVoiceCommand('hindi'), VoiceCommand.hindiMode);
+    });
+
+    test('is the torch on is a question, not a command', () {
+      expect(parseVoiceCommand('is the torch on'), VoiceCommand.torchState);
+      expect(parseVoiceCommand('is the light on'), VoiceCommand.torchState);
+      expect(parseVoiceCommand('is my torch off'), VoiceCommand.torchState);
+      expect(parseVoiceCommand('टॉर्च चालू है'), VoiceCommand.torchState);
+      expect(parseVoiceCommand('turn on the torch'), VoiceCommand.torchOn);
+      expect(parseVoiceCommand('turn off the light'), VoiceCommand.torchOff);
+    });
+
+    test('speed and battery questions', () {
+      expect(
+        parseVoiceCommand('how fast are you reading'),
+        VoiceCommand.readingSpeed,
+      );
+      expect(
+        parseVoiceCommand('what speed is this'),
+        VoiceCommand.readingSpeed,
+      );
+      expect(parseVoiceCommand('कितनी तेज़ है'), VoiceCommand.readingSpeed);
+      expect(parseVoiceCommand('battery'), VoiceCommand.battery);
+      expect(
+        parseVoiceCommand('how much charge is left'),
+        VoiceCommand.battery,
+      );
+      expect(parseVoiceCommand('बैटरी'), VoiceCommand.battery);
+      expect(parseVoiceCommand('faster'), VoiceCommand.faster);
+    });
+
+    test('conversation repair', () {
+      expect(parseVoiceCommand('what did you say'), VoiceCommand.repeatAnswer);
+      expect(
+        parseVoiceCommand('what did you just say'),
+        VoiceCommand.repeatAnswer,
+      );
+      expect(parseVoiceCommand('क्या कहा'), VoiceCommand.repeatAnswer);
+      expect(parseVoiceCommand('never mind'), VoiceCommand.neverMind);
+      expect(parseVoiceCommand('forget it'), VoiceCommand.neverMind);
+      expect(parseVoiceCommand('cancel'), VoiceCommand.neverMind);
+      expect(parseVoiceCommand('कुछ नहीं'), VoiceCommand.neverMind);
+      expect(parseVoiceCommand('repeat'), VoiceCommand.repeat);
+    });
+
+    test('reading progress is not a location question', () {
+      expect(parseVoiceCommand('where was I'), VoiceCommand.readingProgress);
+      expect(
+        parseVoiceCommand('how much is left'),
+        VoiceCommand.readingProgress,
+      );
+      expect(
+        parseVoiceCommand('how many sentences are left'),
+        VoiceCommand.readingProgress,
+      );
+      expect(parseVoiceCommand('कहाँ था'), VoiceCommand.readingProgress);
+      expect(parseVoiceCommand('where am I'), VoiceCommand.location);
+      expect(parseVoiceCommand('read from the top'), VoiceCommand.startOver);
+    });
+  });
+
+  group('vision questions', () {
+    test('colour questions', () {
+      expect(
+        parseVoiceCommand('what colour is this'),
+        VoiceCommand.questionColour,
+      );
+      expect(
+        parseVoiceCommand('what color is it'),
+        VoiceCommand.questionColour,
+      );
+      expect(parseVoiceCommand('which colour'), VoiceCommand.questionColour);
+      expect(parseVoiceCommand('रंग क्या है'), VoiceCommand.questionColour);
+      expect(parseVoiceCommand('what is this'), VoiceCommand.whatIsThis);
+    });
+
+    test('left and right questions', () {
+      expect(parseVoiceCommand("what's on my left"), VoiceCommand.whatIsLeft);
+      expect(parseVoiceCommand('what is on my left'), VoiceCommand.whatIsLeft);
+      expect(
+        parseVoiceCommand('anything on the left'),
+        VoiceCommand.whatIsLeft,
+      );
+      expect(
+        parseVoiceCommand('मेरी बाईं ओर क्या है'),
+        VoiceCommand.whatIsLeft,
+      );
+      expect(parseVoiceCommand("what's on my right"), VoiceCommand.whatIsRight);
+      expect(
+        parseVoiceCommand('what is on my right'),
+        VoiceCommand.whatIsRight,
+      );
+      expect(parseVoiceCommand('दाईं ओर क्या है'), VoiceCommand.whatIsRight);
+    });
+  });
+
   group('near-miss recognition', () {
     test('a one-letter slip still reads', () {
       expect(parseVoiceCommand('red'), VoiceCommand.readNow);

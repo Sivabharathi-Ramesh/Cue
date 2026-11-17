@@ -61,6 +61,12 @@ class AudioBus {
   /// the doubt preamble so repeat repeats the truth, not just the guess.
   String? _lastSpoken;
 
+  /// The last direct answer, such as the time, a location or a mode name.
+  ///
+  /// Separate from [_lastSpoken]: "what did you say" after a question must
+  /// repeat the answer, not the page that happened to be read before it.
+  String? _lastAnswer;
+
   /// The sentences of the current reading, in order.
   List<String> _sentences = const <String>[];
 
@@ -144,6 +150,12 @@ class AudioBus {
     // Something more urgent is already speaking: drop this one.
     if (_speaking && priority.index < _current.index) return;
 
+    _lastAnswer = clean;
+    // Direct speech is repeatable when there is no page queue. A paused page
+    // keeps its own sentences so "repeat" still means the page, not the last
+    // menu message.
+    if (_sentences.isEmpty) _lastSpoken = clean;
+
     await _speak(clean, priority);
   }
 
@@ -199,6 +211,28 @@ class AudioBus {
     if (move != ReadingMove.noReading) return;
 
     final last = _lastSpoken;
+    if (last == null) {
+      await say(
+        CueStrings(LanguageService.instance.language.value).nothingToRepeat,
+        priority: SpeechPriority.info,
+      );
+      return;
+    }
+    await _speak(last, SpeechPriority.answer);
+  }
+
+  /// Repeats the last answer to a question ("what did you say?").
+  ///
+  /// While a page is being read, the user almost always means the sentence
+  /// they just heard, so the page wins. With no page in memory the last direct
+  /// answer is replayed, which is what a conversation repair needs.
+  Future<void> repeatAnswer() async {
+    if (_sentences.isNotEmpty) {
+      await repeatLast();
+      return;
+    }
+
+    final last = _lastAnswer ?? _lastSpoken;
     if (last == null) {
       await say(
         CueStrings(LanguageService.instance.language.value).nothingToRepeat,
@@ -280,6 +314,7 @@ class AudioBus {
   void forgetLastResult() {
     _lastResult = null;
     _lastSpoken = null;
+    _lastAnswer = null;
     _sentences = const <String>[];
     _index = 0;
     _readingActive = false;

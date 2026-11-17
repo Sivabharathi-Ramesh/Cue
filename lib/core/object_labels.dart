@@ -250,6 +250,57 @@ String _hindiObject(DetectedObject object, bool includeDistance) {
   return '$name, $direction, $distance।';
 }
 
+/// The answer to "what colour is this?".
+///
+/// The colour is sampled from the middle of the view, so the sentence says so.
+/// "Mostly blue" is honest about a scene with several colours in it; "blue"
+/// alone would pretend the whole picture was one object.
+String colourInViewAnswer(ColourReading? reading, {required bool hindi}) {
+  if (reading == null) {
+    return hindi
+        ? 'अभी रंग नहीं बता सकता। किसी चीज़ पर कैमरा रखें और स्थिर रखें।'
+        : 'I cannot tell the colour right now. Point at something and hold '
+              'steady.';
+  }
+
+  final name = hindi ? hindiColourName(reading) : englishColourName(reading);
+  return hindi
+      ? 'सामने का मुख्य रंग $name है।'
+      : 'The middle of your view is mostly $name.';
+}
+
+/// "Looking to your left." Said before a scan that may take a second or two.
+String sideLooking(ObjectDirection side, {required bool hindi}) {
+  if (hindi) {
+    return switch (side) {
+      ObjectDirection.left => 'आपके बाईं ओर देख रहा हूँ।',
+      ObjectDirection.right => 'आपके दाईं ओर देख रहा हूँ।',
+      ObjectDirection.ahead => 'सामने देख रहा हूँ।',
+    };
+  }
+  return switch (side) {
+    ObjectDirection.left => 'Looking to your left.',
+    ObjectDirection.right => 'Looking to your right.',
+    ObjectDirection.ahead => 'Looking ahead.',
+  };
+}
+
+/// The honest answer when nothing recognisable is on that side.
+String nothingOnSide(ObjectDirection side, {required bool hindi}) {
+  if (hindi) {
+    return switch (side) {
+      ObjectDirection.left => 'मुझे आपके बाईं ओर कोई चीज़ साफ़ नहीं दिख रही।',
+      ObjectDirection.right => 'मुझे आपके दाईं ओर कोई चीज़ साफ़ नहीं दिख रही।',
+      ObjectDirection.ahead => 'मुझे सामने कोई चीज़ साफ़ नहीं दिख रही।',
+    };
+  }
+  return switch (side) {
+    ObjectDirection.left => 'I cannot see anything clearly on your left.',
+    ObjectDirection.right => 'I cannot see anything clearly on your right.',
+    ObjectDirection.ahead => 'I cannot see anything clearly ahead.',
+  };
+}
+
 /// Coarse spoken distance for English.
 ///
 /// Rounded halves, because a pinhole estimate taken from a bounding box is

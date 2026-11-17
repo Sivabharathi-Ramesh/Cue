@@ -139,9 +139,11 @@ class ObjectDetectService {
           .where((object) => object.confidence >= (lenient ? 0.40 : 0.45))
           .toList();
 
-      final chosen = strong.isNotEmpty
-          ? strong
-          : (moderate.length >= 2 ? moderate : const <DetectedObject>[]);
+      final chosen = maxObjects > 3
+          ? unique.where((o) => o.confidence >= 0.30).toList()
+          : (strong.isNotEmpty
+                ? strong
+                : (moderate.length >= 2 ? moderate : const <DetectedObject>[]));
 
       if (chosen.isEmpty) return const <DetectedObject>[];
 

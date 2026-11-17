@@ -28,11 +28,22 @@ enum VoiceCommand {
   location,
   locationSettings,
   toggleLanguage,
+  whichLanguage,
   whoAreYou,
   howAreYou,
   thanks,
   greeting,
   whatIsThis,
+  whatMode,
+  torchState,
+  readingSpeed,
+  battery,
+  repeatAnswer,
+  neverMind,
+  readingProgress,
+  questionColour,
+  whatIsLeft,
+  whatIsRight,
   unknown,
 }
 
@@ -101,6 +112,18 @@ VoiceCommand parseVoiceCommand(String transcript) {
     return VoiceCommand.toggleLanguage;
   }
 
+  // Asking which language is in use, not asking to change it. Checked after
+  // the switch phrases so "change language" still switches.
+  if (has('what language') ||
+      has('which language') ||
+      has('what language are you') ||
+      has('which language are you') ||
+      has('कौन सी भाषा') ||
+      has('कौन भाषा') ||
+      has('भाषा क्या है')) {
+    return VoiceCommand.whichLanguage;
+  }
+
   // Identity and small talk. People ask these before they ask for a reading,
   // and a blind user cannot read a "not understood" message on screen.
   if (has('what is your name') ||
@@ -146,6 +169,50 @@ VoiceCommand parseVoiceCommand(String transcript) {
     return VoiceCommand.greeting;
   }
 
+  // Vision questions. Checked before "what is this" so the words "what is"
+  // cannot swallow them.
+  if (has('what colour') ||
+      has('what color') ||
+      has('which colour') ||
+      has('which color') ||
+      has('what is the colour') ||
+      has('what is the color') ||
+      has("what's the colour") ||
+      has("what's the color") ||
+      has('colour of this') ||
+      has('color of this') ||
+      has('रंग क्या') ||
+      has('क्या रंग') ||
+      has('कौन सा रंग') ||
+      has('इसका रंग') ||
+      exact('रंग')) {
+    return VoiceCommand.questionColour;
+  }
+  if (has('on my left') ||
+      has('to my left') ||
+      has('on the left') ||
+      has('to the left') ||
+      has('left side') ||
+      has('मेरी बाईं ओर') ||
+      has('मेरे बाईं ओर') ||
+      has('बाईं ओर क्या') ||
+      has('बाएँ क्या') ||
+      has('बाईं तरफ')) {
+    return VoiceCommand.whatIsLeft;
+  }
+  if (has('on my right') ||
+      has('to my right') ||
+      has('on the right') ||
+      has('to the right') ||
+      has('right side') ||
+      has('मेरी दाईं ओर') ||
+      has('मेरे दाईं ओर') ||
+      has('दाईं ओर क्या') ||
+      has('दाएँ क्या') ||
+      has('दाईं तरफ')) {
+    return VoiceCommand.whatIsRight;
+  }
+
   // "What is this" is the most natural way to ask for a read or a description.
   // The screen decides which, because only it knows whether object mode is on.
   if (has('what is this') ||
@@ -159,6 +226,47 @@ VoiceCommand parseVoiceCommand(String transcript) {
       has('वह क्या') ||
       has('क्या दिख')) {
     return VoiceCommand.whatIsThis;
+  }
+
+  // State questions must beat the switch phrases: "is the torch on" contains
+  // "torch on" and would otherwise turn the torch on instead of answering.
+  if (has('is the torch on') ||
+      has('is the torch off') ||
+      has('is my torch on') ||
+      has('is my torch off') ||
+      has('is my light on') ||
+      has('is my light off') ||
+      has('torch is on') ||
+      has('torch is off') ||
+      has('is the light on') ||
+      has('is the flashlight on') ||
+      has('is the flashlight off') ||
+      has('टॉर्च चालू है') ||
+      has('टॉर्च ऑन है') ||
+      has('टॉर्च बंद है') ||
+      has('टॉर्च जल')) {
+    return VoiceCommand.torchState;
+  }
+
+  if (has('how fast') ||
+      has('what speed') ||
+      has('reading speed') ||
+      has('speech speed') ||
+      has('how slow') ||
+      has('कितनी तेज़') ||
+      has('कितनी तेज') ||
+      has('किस गति') ||
+      has('पढ़ने की गति') ||
+      has('गति क्या')) {
+    return VoiceCommand.readingSpeed;
+  }
+
+  if (has('battery') ||
+      has('charge level') ||
+      has('how much charge') ||
+      has('बैटरी') ||
+      has('चार्ज')) {
+    return VoiceCommand.battery;
   }
 
   // Torch is a device control, not a reading command.
@@ -228,6 +336,23 @@ VoiceCommand parseVoiceCommand(String transcript) {
       exact('दिन')) {
     return VoiceCommand.currentDate;
   }
+  // Where the reading got to. Must be checked before the fuzzy "where"
+  // fallback to the location command.
+  if (has('where was i') ||
+      has('where were we') ||
+      has('how much is left') ||
+      has('how much left') ||
+      has('how many sentences') ||
+      has('how far did you') ||
+      has('reading progress') ||
+      has('कहाँ था') ||
+      has('कहाँ थी') ||
+      has('कितना बाकी') ||
+      has('कितना बचा') ||
+      has('कितने वाक्य')) {
+    return VoiceCommand.readingProgress;
+  }
+
   // "turn on location" is a request to fix the switch, not a question about
   // where the user is. Checked before the location questions.
   if (has('turn on location') ||
@@ -265,6 +390,8 @@ VoiceCommand parseVoiceCommand(String transcript) {
   if (has('start over') ||
       has('from the beginning') ||
       has('from the start') ||
+      has('from the top') ||
+      has('read from the top') ||
       has('restart') ||
       has('शुरू से') ||
       has('फिर से शुरू') ||
@@ -292,6 +419,18 @@ VoiceCommand parseVoiceCommand(String transcript) {
       has('पीछे') ||
       has('वापस')) {
     return VoiceCommand.previousSentence;
+  }
+
+  // A question about the current mode, not a request to change it.
+  if (has('what mode') ||
+      has('which mode') ||
+      has('mode am i in') ||
+      has('mode are you in') ||
+      has('current mode') ||
+      has('कौन सा मोड') ||
+      has('कौन मोड') ||
+      has('मोड क्या है')) {
+    return VoiceCommand.whatMode;
   }
 
   // Modes next. "screen" on its own is a mode, not "show preview".
@@ -339,6 +478,34 @@ VoiceCommand parseVoiceCommand(String transcript) {
       exact('screen') ||
       exact('स्क्रीन')) {
     return VoiceCommand.screenMode;
+  }
+
+  // Repair: repeat the last answer, not the last page reading. Checked before
+  // the general repeat phrases so "what did you say" is not treated as a page
+  // command.
+  if (has('what did you say') ||
+      has('what did you just say') ||
+      has('what was that') ||
+      has('what did you tell me') ||
+      has('come again') ||
+      has('क्या कहा') ||
+      has('क्या कहा आपने') ||
+      has('क्या बोला')) {
+    return VoiceCommand.repeatAnswer;
+  }
+
+  // "Never mind" cancels the request without pretending it succeeded.
+  if (has('never mind') ||
+      has('nevermind') ||
+      has('forget it') ||
+      has('forget about it') ||
+      has('leave it') ||
+      has('cancel') ||
+      has('कुछ नहीं') ||
+      has('रहने दो') ||
+      has('छोड़ो') ||
+      has('कैंसल')) {
+    return VoiceCommand.neverMind;
   }
 
   // Repeat before read: "read again" asks for the last result, not a new scan.

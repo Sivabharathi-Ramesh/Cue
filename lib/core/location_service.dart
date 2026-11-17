@@ -29,6 +29,7 @@ class LocationFix {
   const LocationFix({
     required this.latitude,
     required this.longitude,
+    this.age,
     this.locality,
     this.subLocality,
     this.city,
@@ -38,6 +39,16 @@ class LocationFix {
 
   final double latitude;
   final double longitude;
+
+  /// How old the position was when it was read, when the phone reports it.
+  final Duration? age;
+
+  /// Old enough that the user must be told it may no longer be true.
+  ///
+  /// A phone that cannot see the sky can still answer from its last known
+  /// position. That is useful, but presenting an old position as "you are
+  /// here" would be a confident lie.
+  bool get stale => age != null && age! > const Duration(minutes: 10);
   final String? locality;
   final String? subLocality;
   final String? city;
@@ -127,6 +138,9 @@ class LocationService {
         LocationFix(
           latitude: latitude,
           longitude: longitude,
+          age: raw['ageMs'] is num
+              ? Duration(milliseconds: (raw['ageMs'] as num).toInt())
+              : null,
           locality: raw['locality'] as String?,
           subLocality: raw['subLocality'] as String?,
           city: raw['city'] as String?,

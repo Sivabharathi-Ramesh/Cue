@@ -18,6 +18,7 @@ import '../vision/camera_frame_encoder.dart';
 import '../vision/detected_object.dart';
 import '../vision/object_detect_service.dart';
 import '../vision/object_tracker.dart';
+import '../vision/object_colour.dart';
 import '../core/object_labels.dart';
 import 'aiming_coach.dart';
 import 'frame_metrics.dart';
@@ -58,19 +59,18 @@ class FramePipeline {
 
   /// Consecutive untrusted readings before the app admits it cannot read them.
   ///
-  /// Five consecutive unreadable frames ensure we only speak when the user is
-  /// steadily pointing at unreadable marks, avoiding interruptions during quick
-  /// camera movement or framing transitions.
-  static const int _untrustedBeforeSpeaking = 5;
+  /// One bad frame is normal: motion blur, a passing shadow, a page turning.
+  /// Three in a row means the marks in view are genuinely not readable, which
+  /// is the handwriting case. Saying so immediately would interrupt the user
+  /// every time the camera nudged.
+  static const int _untrustedBeforeSpeaking = 3;
 
-  /// Minimum gap between "Unreadable text" notifications to avoid nagging.
-  static const Duration _honestyCooldown = Duration(seconds: 45);
-
-  /// Consecutive frames without words before saying there is an unrecognised scene.
-  static const int _notTextBeforeSpeaking = 5;
-
-  /// Minimum gap between "Unrecognised object" sentences.
-  static const Duration _notTextCooldown = Duration(seconds: 45);
+  /// Consecutive frames without words before saying there is something in view
+  /// that Cue cannot identify.
+  ///
+  /// The same reasoning as [_untrustedBeforeSpeaking] applies: one wordless
+  /// frame is a shadow or a camera nudge, three is a scene.
+  static const int _notTextBeforeSpeaking = 3;
 
   final FrameSampler _sampler = FrameSampler();
   final StabilityGate _stability = StabilityGate();
@@ -134,6 +134,30 @@ class FramePipeline {
   /// When objects were last announced, so the same scene is not repeated.
   DateTime? _lastObjectSpokenAt;
 
+  /// The most recent detections, kept so a follow-up question about a side can
+  /// reuse work the camera has already done.
+  List<DetectedObject> _lastObjects = const <DetectedObject>[];
+
+  List<DetectedObject> get lastObjects => _lastObjects;
+
+  /// Whether developer inspection mode is enabled.
+  ///
+  /// When true, frame detection rate in object mode is faster to provide
+  /// smooth real-time bounding box visualization, and all detected objects
+  /// are exposed via [detectedObjects].
+  bool developerMode = false;
+
+  /// Live detected objects for visual inspection (e.g. developer overlays).
+  final ValueNotifier<List<DetectedObject>> detectedObjects =
+      ValueNotifier<List<DetectedObject>>(const <DetectedObject>[]);
+
+  /// A pending "what colour is this" request, answered on the next frame.
+  Completer<ColourReading?>? _colourRequest;
+
+  /// A pending "what is on my left/right" request, answered on the next frame.
+  Completer<DetectedObject?>? _objectOnRequest;
+  ObjectDirection? _objectOnSide;
+
   /// What the user last told Cue to look for. Text is the only built handler.
   Interpretation _interpretation = Interpretation.text;
 
@@ -146,6 +170,7 @@ class FramePipeline {
   void setInterpretation(Interpretation value) {
     if (value == _interpretation) return;
     _interpretation = value;
+    detectedObjects.value = const <DetectedObject>[];
     _stability.reset();
     _untrustedStreak = 0;
     _notTextStreak = 0;
@@ -156,6 +181,7 @@ class FramePipeline {
     _lastObjectAt = DateTime.fromMillisecondsSinceEpoch(0);
     _lastObjectSignature = '';
     _lastObjectSpokenAt = null;
+    _lastObjects = const <DetectedObject>[];
     _objectTracker.reset();
   }
 
@@ -181,9 +207,55 @@ class FramePipeline {
     _manualRequested = true;
   }
 
+  /// The colour in the middle of the view, sampled from a fresh frame.
+  ///
+  /// Resolves to null when the frame could not be decoded or the request timed
+  /// out. The answer is deliberately about the *middle* of the view: naming
+  /// one colour for a whole scene would be a guess.
+  Future<ColourReading?> colourInView({
+    Duration timeout = const Duration(seconds: 5),
+  }) {
+    final pending = _colourRequest;
+    if (pending != null) return pending.future;
+
+    final completer = Completer<ColourReading?>();
+    _colourRequest = completer;
+    Timer(timeout, () {
+      if (!identical(_colourRequest, completer)) return;
+      _colourRequest = null;
+      if (!completer.isCompleted) completer.complete(null);
+    });
+    return completer.future;
+  }
+
+  /// The nearest recognised object on [side], found from a fresh frame.
+  ///
+  /// Works in any mode: the user asked a direct vision question, so the
+  /// detector is run even when text mode is active. Resolves to null when
+  /// nothing plausible is there.
+  Future<DetectedObject?> objectOn(
+    ObjectDirection side, {
+    Duration timeout = const Duration(seconds: 8),
+  }) {
+    final pending = _objectOnRequest;
+    if (pending != null) return pending.future;
+
+    final completer = Completer<DetectedObject?>();
+    _objectOnRequest = completer;
+    _objectOnSide = side;
+    Timer(timeout, () {
+      if (!identical(_objectOnRequest, completer)) return;
+      _objectOnRequest = null;
+      _objectOnSide = null;
+      if (!completer.isCompleted) completer.complete(null);
+    });
+    return completer.future;
+  }
+
   /// Invalidates in-flight work when the camera stops.
   void reset() {
     _generation++;
+    detectedObjects.value = const <DetectedObject>[];
     _sampler.reset();
     _stability.reset();
     _coach.reset();
@@ -203,7 +275,9 @@ class FramePipeline {
     _lastObjectAt = DateTime.fromMillisecondsSinceEpoch(0);
     _lastObjectSignature = '';
     _lastObjectSpokenAt = null;
+    _lastObjects = const <DetectedObject>[];
     _objectTracker.reset();
+    _cancelQuestions();
   }
 
   Future<void> _handle(CameraFrame frame) async {
@@ -211,6 +285,22 @@ class FramePipeline {
 
     final generation = _generation;
     final now = DateTime.now();
+
+    // Answer any pending colour request using this frame.
+    if (_colourRequest != null) {
+      final req = _colourRequest!;
+      _colourRequest = null;
+      _busy = true;
+      try {
+        final reading = await _sampleCentreColour(frame);
+        if (!req.isCompleted) req.complete(reading);
+      } catch (_) {
+        if (!req.isCompleted) req.complete(null);
+      } finally {
+        if (generation == _generation) _busy = false;
+      }
+      return;
+    }
 
     // A moving phone produces blurred frames. Reading them wastes work and
     // makes the object detector guess, so wait for the hand to settle. Manual
@@ -222,8 +312,8 @@ class FramePipeline {
     _movingSince = null;
 
     // Object mode: the camera feeds YOLO instead of the text recogniser.
-    if (_interpretation == Interpretation.object) {
-      final manual = _manualRequested;
+    if (_interpretation == Interpretation.object || _objectOnRequest != null) {
+      final manual = _manualRequested || _objectOnRequest != null;
       _manualRequested = false;
 
       final canNarrate =
@@ -231,8 +321,11 @@ class FramePipeline {
           !AudioBus.instance.speaking.value &&
           !AudioBus.instance.isMuted;
       final due = now.difference(_lastObjectAt) >= _objectMinGap;
+      final devDue =
+          developerMode &&
+          now.difference(_lastObjectAt) >= const Duration(milliseconds: 250);
 
-      if (!manual && (!due || !canNarrate)) {
+      if (!manual && !devDue && (!due || !canNarrate)) {
         if (kDebugMode &&
             now.difference(_lastObjectDiagAt) > const Duration(seconds: 3)) {
           _lastObjectDiagAt = now;
@@ -420,6 +513,9 @@ class FramePipeline {
       // Any words at all mean the no-words streak is over, even if the marks
       // turn out to be unreadable handwriting.
       _notTextStreak = 0;
+      // Words came back, so a later wordless scene may once again deserve one
+      // honest sentence instead of silence.
+      _lastNotTextAt = null;
 
       final frameSize = rotatedSize(
         frame.image.width,
@@ -454,9 +550,24 @@ class FramePipeline {
 
       if (readable) {
         _untrustedStreak = 0;
+        // A readable result ends the unreadable-marks episode, so the next one
+        // may speak once again.
+        _lastHonestyAt = null;
         _stability.add(text);
 
-        if (manual || _stability.isStable) {
+        // Automatic reading stays silent when the result is only doubtful.
+        //
+        // Saying "I am not sure" again and again while the camera pans a room
+        // is worse than silence: nobody asked for a reading, and the apology
+        // becomes the loudest thing the app does. A deliberate read (double
+        // tap or "read") still gets the honest uncertain answer with its
+        // warning, because then the user is waiting for one.
+        final skipDoubt = !maySpeakUnprompted(tier) && !manual;
+        if (skipDoubt && kDebugMode) {
+          debugPrint('live: silent automatic reading tier=${tier.name}');
+        }
+
+        if ((manual || _stability.isStable) && !skipDoubt) {
           final spoken = AudioBus.instance.speakResult(
             text,
             force: manual,
@@ -519,6 +630,61 @@ class FramePipeline {
     }
   }
 
+  /// Wakes a side question with its answer, once.
+  void _completeObjectRequest(DetectedObject? match) {
+    final request = _objectOnRequest;
+    _objectOnRequest = null;
+    _objectOnSide = null;
+    if (request != null && !request.isCompleted) request.complete(match);
+  }
+
+  /// Answers any waiting frame question with null, so a stopped camera or a
+  /// mode switch never leaves a caller waiting for the full timeout.
+  void _cancelQuestions() {
+    final colour = _colourRequest;
+    _colourRequest = null;
+    if (colour != null && !colour.isCompleted) colour.complete(null);
+
+    final object = _objectOnRequest;
+    _objectOnRequest = null;
+    _objectOnSide = null;
+    if (object != null && !object.isCompleted) object.complete(null);
+  }
+
+  /// Decodes one frame and samples the middle half of the picture.
+  ///
+  /// The inset avoids the edges, where a hand or table is more likely to be.
+  /// A decode failure returns null rather than a colour invented from noise.
+  Future<ColourReading?> _sampleCentreColour(CameraFrame frame) async {
+    final rotation = rotationDegrees(
+      frame.description,
+      frame.deviceOrientation,
+    );
+    final jpeg = await cameraFrameToJpeg(frame, rotation);
+    if (jpeg.isEmpty) return null;
+
+    Codec? codec;
+    Image? image;
+    try {
+      codec = await instantiateImageCodec(jpeg);
+      final decoded = await codec.getNextFrame();
+      image = decoded.image;
+      final data = await image.toByteData(format: ImageByteFormat.rawRgba);
+      if (data == null) return null;
+      return dominantColourInBox(
+        data.buffer.asUint8List(),
+        image.width,
+        image.height,
+        const Rect.fromLTWH(0.25, 0.25, 0.5, 0.5),
+      );
+    } catch (_) {
+      return null;
+    } finally {
+      image?.dispose();
+      codec?.dispose();
+    }
+  }
+
   /// Runs YOLO on one frame and, if useful, speaks the objects it finds.
   ///
   /// Live narration is throttled to [_objectMinGap]. Manual double-tap always
@@ -532,6 +698,8 @@ class FramePipeline {
     required int generation,
   }) async {
     _lastObjectAt = DateTime.now();
+    final side = _objectOnSide;
+    final sideQuestion = _objectOnRequest != null && side != null;
 
     final rotation = rotationDegrees(
       frame.description,
@@ -539,12 +707,18 @@ class FramePipeline {
     );
     final encodeWatch = Stopwatch()..start();
     final jpeg = await cameraFrameToJpeg(frame, rotation);
-    if (jpeg.isEmpty) return;
+    if (jpeg.isEmpty) {
+      if (sideQuestion) _completeObjectRequest(null);
+      return;
+    }
 
     final detectWatch = Stopwatch()..start();
     final detected = await ObjectDetectService.instance.detect(
       jpeg,
-      lenient: manual,
+      // A side question asks about one half of the view, so a slightly larger
+      // pool is needed to find an object there before the list is trimmed.
+      maxObjects: sideQuestion ? 8 : (developerMode ? 15 : 3),
+      lenient: manual || developerMode || sideQuestion,
     );
     if (kDebugMode) {
       debugPrint(
@@ -554,9 +728,30 @@ class FramePipeline {
         'bytes=${jpeg.length} found=${detected.length}',
       );
     }
-    if (generation != _generation) return;
+    if (generation != _generation) {
+      if (sideQuestion) _completeObjectRequest(null);
+      return;
+    }
 
-    final confirmed = _objectTracker.update(detected, trustImmediately: manual);
+    final confirmed = _objectTracker.update(
+      detected,
+      trustImmediately: manual || developerMode,
+    );
+    _lastObjects = confirmed;
+    detectedObjects.value = developerMode ? detected : confirmed;
+
+    if (sideQuestion) {
+      DetectedObject? match;
+      for (final object in detected) {
+        if (object.direction != side) continue;
+        if (match == null || object.area > match.area) match = object;
+      }
+      _completeObjectRequest(match);
+      // A direct side question gets exactly one answer. Narrating the whole
+      // scene as well would talk over it and answer a question nobody asked.
+      return;
+    }
+
     final hindi = _language.isHindi;
 
     if (confirmed.isEmpty) {
@@ -571,11 +766,21 @@ class FramePipeline {
       return;
     }
 
+    final now = DateTime.now();
+    // In developer mode or continuous cadence, narration still throttles to avoid spamming.
+    final due =
+        _lastObjectSpokenAt == null ||
+        now.difference(_lastObjectSpokenAt!) >= _objectMinGap;
+    final canNarrate =
+        !AudioBus.instance.hasReading &&
+        !AudioBus.instance.speaking.value &&
+        !AudioBus.instance.isMuted;
+    if (!manual && (!due || !canNarrate)) return;
+
     // Three things is already a lot to listen to; more is noise.
     final spoken = confirmed.take(3).toList(growable: false);
     final message = objectDescription(spoken, hindi: hindi);
     final signature = _objectSignature(spoken);
-    final now = DateTime.now();
     final repeated =
         signature == _lastObjectSignature &&
         _lastObjectSpokenAt != null &&
@@ -661,15 +866,18 @@ class FramePipeline {
   /// Says, honestly, that there is something in view but it is not words.
   ///
   /// FR-05's fallback. It waits for a few consecutive wordless frames so a
-  /// passing shadow does not trigger it, and then stays quiet for a while.
+  /// passing shadow does not trigger it, then says it once for that episode.
+  /// Repeating "I see something but cannot tell what it is" every few seconds
+  /// while the user pans a room is noise, not help; the message returns only
+  /// after text has been seen and lost again, or when the user asks.
   void _maybeSpeakNotText({required bool manual}) {
     if (AudioBus.instance.isMuted) return;
     final now = DateTime.now();
 
     if (!manual) {
       if (_notTextStreak < _notTextBeforeSpeaking) return;
-      final last = _lastNotTextAt;
-      if (last != null && now.difference(last) < _notTextCooldown) return;
+      // Already said it for this stretch of wordless frames.
+      if (_lastNotTextAt != null) return;
     }
 
     _lastNotTextAt = now;
@@ -694,16 +902,16 @@ class FramePipeline {
   ///
   /// A blind user cannot check a wrong reading, so guessing is worse than
   /// refusing. The manual path always answers because the user asked; the
-  /// automatic path waits for a few consecutive failures and then keeps quiet
-  /// for a while.
+  /// automatic path waits for a few consecutive failures and then says it once
+  /// for that episode rather than repeating an apology.
   void _maybeRefuseReading({required bool manual}) {
     if (AudioBus.instance.isMuted) return;
     final now = DateTime.now();
 
     if (!manual) {
       if (_untrustedStreak < _untrustedBeforeSpeaking) return;
-      final last = _lastHonestyAt;
-      if (last != null && now.difference(last) < _honestyCooldown) return;
+      // Already said it for this stretch of unreadable marks.
+      if (_lastHonestyAt != null) return;
     }
 
     _lastHonestyAt = now;

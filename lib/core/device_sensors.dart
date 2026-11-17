@@ -74,6 +74,21 @@ class DeviceSensors {
     }
   }
 
+  /// Battery charge as a percentage, or null when the platform cannot say.
+  ///
+  /// The app never shows a battery icon that a blind user can check, so the
+  /// question has to be answerable by voice. A null result is spoken honestly
+  /// rather than guessed.
+  Future<int?> batteryPercent() async {
+    try {
+      final value = await _methods.invokeMethod<int>('battery');
+      if (value == null || value < 0) return null;
+      return value;
+    } catch (_) {
+      return null;
+    }
+  }
+
   void _onEvent(dynamic event) {
     if (event is! Map) return;
     switch (event['kind']) {

@@ -128,9 +128,14 @@ String spokenLocation(LocationResult result, {required bool hindi}) {
             ? 'अभी लोकेशन नहीं मिली।'
             : 'I could not get a location just now.';
       }
-      return fix.hasPlaceName
+      final sentence = fix.hasPlaceName
           ? _placeSentence(fix, hindi: hindi)
           : _coordinateSentence(fix, hindi: hindi);
+      if (!fix.stale) return sentence;
+      return hindi
+          ? 'यह फ़ोन की पिछली लोकेशन है, इसलिए पुरानी हो सकती है। $sentence'
+          : "This is your phone's last known location, so it may be out of "
+                'date. $sentence';
   }
 }
 
@@ -156,4 +161,47 @@ String _coordinateSentence(LocationFix fix, {required bool hindi}) {
   }
   return 'I have your position but no place name. Latitude $lat '
       '${north ? 'north' : 'south'}, longitude $lon ${east ? 'east' : 'west'}.';
+}
+
+/// "Battery is 62 percent." / "बैटरी 62 प्रतिशत है।"
+///
+/// A blind user cannot glance at the status bar, so the number is spoken in
+/// the same place as the time and date. A null reading is admitted rather than
+/// guessed, because a wrong battery warning is worse than none.
+String spokenBattery(int? percent, {required bool hindi}) {
+  if (percent == null || percent < 0) {
+    return hindi
+        ? 'बैटरी की जानकारी नहीं मिली।'
+        : 'I could not read the battery level.';
+  }
+  return hindi ? 'बैटरी $percent प्रतिशत है।' : 'Battery is $percent percent.';
+}
+
+/// "Sentence 3 of 12. Nine sentences left." / "वाक्य 3, कुल 12। नौ वाक्य बाकी।"
+///
+/// [index] is one-based, as a person counts. Saying where the reading is stops
+/// a blind user from losing their place when they pause to listen or think.
+String spokenReadingProgress({
+  required int index,
+  required int total,
+  required bool hindi,
+}) {
+  if (total <= 0) {
+    return hindi ? 'अभी कुछ नहीं पढ़ा जा रहा।' : 'Nothing is being read yet.';
+  }
+
+  final safeIndex = index.clamp(1, total);
+  final left = total - safeIndex;
+
+  if (hindi) {
+    final leftPart = left <= 0 ? 'यह आखिरी वाक्य है।' : '$left वाक्य बाकी हैं।';
+    return 'वाक्य $safeIndex, कुल $total। $leftPart';
+  }
+
+  final leftPart = left <= 0
+      ? 'This is the last sentence.'
+      : left == 1
+      ? 'One sentence left.'
+      : '$left sentences left.';
+  return 'Sentence $safeIndex of $total. $leftPart';
 }

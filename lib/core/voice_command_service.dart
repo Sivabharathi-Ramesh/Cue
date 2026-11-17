@@ -113,6 +113,19 @@ class VoiceCommandService {
     'what is this',
     'what can you do',
     'thank you',
+    'what mode am I in',
+    'what language are you using',
+    'is the torch on',
+    'how fast are you reading',
+    'battery',
+    'what did you say',
+    'never mind',
+    'where was I',
+    'how much is left',
+    'what colour is this',
+    'what is on my left',
+    'what is on my right',
+    'read from the top',
   ];
 
   /// The same bias for a Hindi listen.
@@ -148,6 +161,18 @@ class VoiceCommandService {
     'यह क्या है',
     'धन्यवाद',
     'नमस्ते',
+    'कौन सा मोड है',
+    'कौन सी भाषा है',
+    'टॉर्च चालू है',
+    'कितनी तेज़ है',
+    'बैटरी',
+    'क्या कहा',
+    'कुछ नहीं',
+    'कहाँ था',
+    'कितना बाकी है',
+    'रंग क्या है',
+    'मेरी बाईं ओर क्या है',
+    'मेरी दाईं ओर क्या है',
   ];
 
   final stt.SpeechToText _speech = stt.SpeechToText();

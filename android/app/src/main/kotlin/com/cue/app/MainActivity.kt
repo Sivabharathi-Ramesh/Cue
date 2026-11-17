@@ -26,6 +26,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.BatteryManager
 import android.provider.Settings
 import android.view.KeyEvent
 import android.view.WindowManager
@@ -168,6 +169,15 @@ class MainActivity : FlutterActivity() {
             .setMethodCallHandler { call, result ->
                 when (call.method) {
                     "depthAvailable" -> result.success(hasDepthCamera())
+                    // Battery is asked by voice because the status bar is not
+                    // readable to this app's users.
+                    "battery" -> {
+                        val manager = getSystemService(BATTERY_SERVICE) as? BatteryManager
+                        val level = manager?.getIntProperty(
+                            BatteryManager.BATTERY_PROPERTY_CAPACITY
+                        ) ?: -1
+                        result.success(level)
+                    }
                     else -> result.notImplemented()
                 }
             }
@@ -437,6 +447,10 @@ class MainActivity : FlutterActivity() {
             "latitude" to fix.latitude,
             "longitude" to fix.longitude,
             "accuracy" to fix.accuracy.toDouble(),
+            // How old the fix is. A last-known position is still a useful,
+            // honest answer when no provider can produce a new one, but only
+            // if the speech says it may be out of date.
+            "ageMs" to (System.currentTimeMillis() - fix.time).coerceAtLeast(0L),
             "locality" to place["locality"],
             "subLocality" to place["subLocality"],
             "city" to place["city"],
@@ -445,36 +459,47 @@ class MainActivity : FlutterActivity() {
         )
     }
 
+    /**
+     * The newest position the phone can supply.
+     *
+     * The fused provider is asked first and is the only one that combines
+     * Wi-Fi, cell and satellites, so it is what works indoors. The earlier
+     * version asked the network provider alone and never tried GPS, which is
+     * why a phone with every provider enabled could still answer "no fix".
+     */
     private fun bestLocation(manager: LocationManager, timeoutMs: Int): Location? {
-        val providers = listOf(
-            LocationManager.GPS_PROVIDER,
-            LocationManager.NETWORK_PROVIDER,
-            LocationManager.PASSIVE_PROVIDER
-        ).filter { provider ->
+        val candidates = ArrayList<String>(4)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            candidates.add(LocationManager.FUSED_PROVIDER)
+        }
+        candidates.add(LocationManager.NETWORK_PROVIDER)
+        candidates.add(LocationManager.GPS_PROVIDER)
+        candidates.add(LocationManager.PASSIVE_PROVIDER)
+
+        val providers = candidates.filter { provider ->
             try {
                 manager.isProviderEnabled(provider)
             } catch (_: Exception) {
                 false
             }
         }
+        if (providers.isEmpty()) return null
 
-        var cached: Location? = null
-        for (provider in providers) {
-            val location = try {
+        val cached = providers.mapNotNull { provider ->
+            try {
                 manager.getLastKnownLocation(provider)
-            } catch (_: SecurityException) {
-                null
             } catch (_: Exception) {
                 null
             }
-            if (location != null && (cached == null || location.time > cached!!.time)) {
-                cached = location
-            }
-        }
+        }.maxByOrNull { it.time }
 
         val age = cached?.let { System.currentTimeMillis() - it.time } ?: Long.MAX_VALUE
         if (cached != null && age < 2 * 60 * 1000) return cached
 
+        // Ask every provider at once and take whichever answers first. Waiting
+        // on one provider at a time meant a provider that never reports (the
+        // network provider on this phone) used up the whole window before GPS
+        // was ever tried.
         return requestSingleFix(manager, providers, timeoutMs) ?: cached
     }
 
@@ -483,15 +508,8 @@ class MainActivity : FlutterActivity() {
         providers: List<String>,
         timeoutMs: Int
     ): Location? {
-        // Network first indoors: GPS needs the sky, and a locality name is all
-        // this answer needs.
-        val provider = when {
-            providers.contains(LocationManager.NETWORK_PROVIDER) ->
-                LocationManager.NETWORK_PROVIDER
-            providers.contains(LocationManager.GPS_PROVIDER) ->
-                LocationManager.GPS_PROVIDER
-            else -> return null
-        }
+        val live = providers.filter { it != LocationManager.PASSIVE_PROVIDER }
+        if (live.isEmpty()) return null
 
         val latch = CountDownLatch(1)
         var received: Location? = null
@@ -503,9 +521,7 @@ class MainActivity : FlutterActivity() {
                 }
             }
 
-            override fun onProviderDisabled(provider: String) {
-                latch.countDown()
-            }
+            override fun onProviderDisabled(provider: String) {}
 
             override fun onProviderEnabled(provider: String) {}
 
@@ -513,8 +529,24 @@ class MainActivity : FlutterActivity() {
             override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {}
         }
 
+        var registered = false
         return try {
-            manager.requestLocationUpdates(provider, 0L, 0f, listener, Looper.getMainLooper())
+            for (provider in live) {
+                try {
+                    manager.requestLocationUpdates(
+                        provider,
+                        0L,
+                        0f,
+                        listener,
+                        Looper.getMainLooper()
+                    )
+                    registered = true
+                } catch (_: Exception) {
+                    // A provider that cannot be used (missing permission or no
+                    // hardware) must not stop the others from being asked.
+                }
+            }
+            if (!registered) return null
             latch.await(timeoutMs.toLong(), TimeUnit.MILLISECONDS)
             received
         } catch (_: SecurityException) {

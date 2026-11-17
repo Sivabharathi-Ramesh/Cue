@@ -85,6 +85,37 @@ void main() {
       );
     });
 
+    test('an old fix is labelled as possibly out of date', () {
+      const result = LocationResult(
+        LocationFix(
+          latitude: 26.9,
+          longitude: 75.8,
+          locality: 'Jaipur',
+          city: 'Jaipur',
+          age: Duration(days: 6),
+        ),
+        LocationProblem.none,
+      );
+      final text = spokenLocation(result, hindi: false);
+      expect(text, contains('last known location'));
+      expect(text, contains('may be out of date'));
+      expect(text, contains('You are in Jaipur.'));
+    });
+
+    test('a fresh fix is stated without a warning', () {
+      const result = LocationResult(
+        LocationFix(
+          latitude: 26.9,
+          longitude: 75.8,
+          locality: 'Jaipur',
+          city: 'Jaipur',
+          age: Duration(seconds: 4),
+        ),
+        LocationProblem.none,
+      );
+      expect(spokenLocation(result, hindi: false), 'You are in Jaipur.');
+    });
+
     test('coordinates are spoken honestly when no place name exists', () {
       const result = LocationResult(
         LocationFix(latitude: 26.912, longitude: 75.787),
@@ -140,6 +171,55 @@ void main() {
         LocationProblem.none,
       );
       expect(spokenLocation(result, hindi: true), 'आप जयपुर में हैं।');
+    });
+  });
+
+  group('spoken battery', () {
+    test('the percentage is stated plainly', () {
+      expect(spokenBattery(62, hindi: false), 'Battery is 62 percent.');
+      expect(spokenBattery(62, hindi: true), 'बैटरी 62 प्रतिशत है।');
+    });
+
+    test('an unreadable level is admitted, not guessed', () {
+      expect(spokenBattery(null, hindi: false), contains('could not'));
+      expect(spokenBattery(-1, hindi: true), contains('नहीं मिली'));
+    });
+  });
+
+  group('spoken reading progress', () {
+    test('sentence number and how many are left', () {
+      expect(
+        spokenReadingProgress(index: 3, total: 12, hindi: false),
+        'Sentence 3 of 12. 9 sentences left.',
+      );
+    });
+
+    test('one left is singular', () {
+      expect(
+        spokenReadingProgress(index: 11, total: 12, hindi: false),
+        'Sentence 11 of 12. One sentence left.',
+      );
+    });
+
+    test('the last sentence says so instead of zero left', () {
+      expect(
+        spokenReadingProgress(index: 12, total: 12, hindi: false),
+        contains('last sentence'),
+      );
+    });
+
+    test('Hindi progress', () {
+      expect(
+        spokenReadingProgress(index: 3, total: 12, hindi: true),
+        contains('वाक्य 3'),
+      );
+    });
+
+    test('no reading is admitted', () {
+      expect(
+        spokenReadingProgress(index: 1, total: 0, hindi: false),
+        'Nothing is being read yet.',
+      );
     });
   });
 }

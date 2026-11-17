@@ -60,6 +60,13 @@ enum ReadingTier {
   refused,
 }
 
+/// Whether a reading may be spoken without the user asking for it.
+///
+/// Only certain text qualifies. An uncertain result is still available when the
+/// user deliberately asks, but an unprompted stream of "I am not sure" while
+/// the camera moves is noise, not help.
+bool maySpeakUnprompted(ReadingTier tier) => tier == ReadingTier.certain;
+
 class ReadingQuality {
   const ReadingQuality({
     required this.confidence,

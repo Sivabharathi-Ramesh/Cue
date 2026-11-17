@@ -192,4 +192,23 @@ void main() {
     expect(quality.toString(), contains('0.83'));
     expect(quality.toString(), contains('tier certain'));
   });
+
+  group('unprompted speech stays quiet when doubtful', () {
+    test('only certain text may be announced automatically', () {
+      expect(maySpeakUnprompted(ReadingTier.certain), isTrue);
+      expect(maySpeakUnprompted(ReadingTier.uncertain), isFalse);
+      expect(maySpeakUnprompted(ReadingTier.refused), isFalse);
+    });
+
+    test('a doubtful page is still available when the user asks', () {
+      final doubtful = ReadingQuality.of(
+        'The quick brown fox',
+        minTrustedConfidence - 0.01,
+      );
+      expect(doubtful.tier, ReadingTier.uncertain);
+      // The deliberate read path ignores this gate; the tier still carries
+      // the text and its warning.
+      expect(doubtful.speakable, isTrue);
+    });
+  });
 }

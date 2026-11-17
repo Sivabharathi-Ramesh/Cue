@@ -25,7 +25,10 @@ import '../core/voice_intro.dart';
 import '../vision/frame_source.dart';
 import '../vision/ocr_service.dart';
 import '../vision/object_detect_service.dart';
+import '../vision/detected_object.dart';
+import '../core/object_labels.dart';
 import 'frame_pipeline.dart';
+import 'object_box_painter.dart';
 import 'scene_router.dart';
 
 /// The five states from section 8 of the specification.
@@ -54,6 +57,27 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
 
   /// Whether press-to-talk is currently listening.
   bool _listening = false;
+
+  /// True while a "where am I" lookup is running, so repeated partial
+  /// recognitions cannot stack several slow lookups.
+  bool _locating = false;
+
+  /// Whether developer mode is active: keeps camera preview bright and
+  /// renders real-time object bounding boxes with confidence scores.
+  bool _developerMode = false;
+
+  void _toggleDeveloperMode() {
+    setState(() {
+      _developerMode = !_developerMode;
+      _pipeline.developerMode = _developerMode;
+      if (_developerMode) {
+        _showPreview();
+      }
+    });
+    Feedback.instance.gesture();
+    final msg = _developerMode ? 'Developer mode on' : 'Developer mode off';
+    unawaited(AudioBus.instance.say(msg, priority: SpeechPriority.navigation));
+  }
 
   // --- Environment sensors --------------------------------------------------
 
@@ -249,11 +273,138 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
     );
   }
 
+  /// Answers "what mode am I in?" without changing anything.
+  Future<void> _sayMode() async {
+    final mode = _pipeline.interpretation;
+    final text = mode.isBuilt
+        ? _strings.modeAnswer(mode.label)
+        : _strings.notBuilt(_strings.modeName(mode.label));
+    await AudioBus.instance.say(text, priority: SpeechPriority.answer);
+  }
+
+  Future<void> _sayLanguage() async {
+    await AudioBus.instance.say(
+      _strings.languageAnswer,
+      priority: SpeechPriority.answer,
+    );
+  }
+
+  Future<void> _sayTorchState() async {
+    await AudioBus.instance.say(
+      _strings.torchStateAnswer(_torchOn),
+      priority: SpeechPriority.answer,
+    );
+  }
+
+  Future<void> _saySpeed() async {
+    final tts = TtsService.instance;
+    await AudioBus.instance.say(
+      _strings.speedAnswer(slowest: tts.atSlowest, fastest: tts.atFastest),
+      priority: SpeechPriority.answer,
+    );
+  }
+
+  Future<void> _sayBattery() async {
+    final percent = await DeviceSensors.instance.batteryPercent();
+    if (!mounted) return;
+    await AudioBus.instance.say(
+      spokenBattery(percent, hindi: _language.isHindi),
+      priority: SpeechPriority.answer,
+    );
+  }
+
+  /// Answers "where was I?" and "how much is left?".
+  Future<void> _sayReadingProgress() async {
+    final bus = AudioBus.instance;
+    if (bus.sentenceCount == 0) {
+      await AudioBus.instance.say(
+        _strings.nothingToRead,
+        priority: SpeechPriority.answer,
+      );
+      return;
+    }
+
+    await AudioBus.instance.say(
+      spokenReadingProgress(
+        index: bus.sentenceIndex + 1,
+        total: bus.sentenceCount,
+        hindi: _language.isHindi,
+      ),
+      priority: SpeechPriority.answer,
+    );
+  }
+
+  /// Samples the middle of the view and names its colour.
+  Future<void> _sayColourInView() async {
+    final reading = await _pipeline.colourInView();
+    if (!mounted) return;
+    await AudioBus.instance.say(
+      colourInViewAnswer(reading, hindi: _language.isHindi),
+      priority: SpeechPriority.answer,
+    );
+  }
+
+  /// Answers "what is on my left/right?" with one object, not a whole scene.
+  Future<void> _saySide(ObjectDirection side) async {
+    final hindi = _language.isHindi;
+
+    // Start the scan before the preamble so the answer is not delayed by the
+    // preamble's own speaking time.
+    final scan = _pipeline.objectOn(side);
+    unawaited(
+      AudioBus.instance.say(
+        sideLooking(side, hindi: hindi),
+        priority: SpeechPriority.info,
+      ),
+    );
+
+    final object = await scan;
+    if (!mounted) return;
+
+    final text = object == null
+        ? nothingOnSide(side, hindi: hindi)
+        : objectDescription(<DetectedObject>[object], hindi: hindi);
+    await AudioBus.instance.say(text, priority: SpeechPriority.answer);
+  }
+
+  Future<void> _repeatAnswer() async {
+    unawaited(Feedback.instance.gesture());
+    await AudioBus.instance.repeatAnswer();
+  }
+
+  /// "Never mind" stops what is happening and says only "Okay".
+  ///
+  /// It must not guess at an action: the point of the phrase is that the user
+  /// withdrew the request.
+  Future<void> _handleNeverMind() async {
+    await AudioBus.instance.stop();
+    await AudioBus.instance.say(
+      _strings.neverMind,
+      priority: SpeechPriority.navigation,
+    );
+  }
+
   /// Asks the phone for a position and speaks it.
   ///
   /// A fix can take a few seconds, so the user is told the wait is deliberate.
   /// The camera keeps running meanwhile; only the voice is busy.
   Future<void> _sayLocation() async {
+    // A "where" partial and then the full sentence fire this twice while the
+    // first lookup is still waiting. Stacking lookups made the user wait for
+    // two or three answers in a row, so only one may run at a time.
+    if (_locating) {
+      debugPrint('location: already looking');
+      return;
+    }
+    _locating = true;
+    try {
+      await _askForLocation();
+    } finally {
+      _locating = false;
+    }
+  }
+
+  Future<void> _askForLocation() async {
     final hindi = _language.isHindi;
 
     // The phone-wide switch comes first. If it is off, no permission or
@@ -293,12 +444,33 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
     }
 
     await AudioBus.instance.say(
-      hindi ? 'लोकेशन देख रहा हूँ।' : 'Finding your location.',
+      hindi
+          ? 'लोकेशन देख रहा हूँ। कुछ सेकंड लग सकते हैं।'
+          : 'Finding your location. This may take a few seconds.',
       priority: SpeechPriority.answer,
     );
     if (!mounted) return;
 
-    final result = await LocationService.instance.current();
+    // Silence for ten seconds sounds like a failure. A quiet nudge keeps the
+    // user informed without drowning out the answer if it arrives first.
+    final nudge = Timer(const Duration(seconds: 6), () {
+      if (!mounted) return;
+      unawaited(
+        AudioBus.instance.say(
+          hindi
+              ? 'अभी भी लोकेशन देख रहा हूँ।'
+              : 'Still looking for your location.',
+          priority: SpeechPriority.answer,
+        ),
+      );
+    });
+
+    // A long window is deliberate: indoors the fused provider often needs ten
+    // seconds to combine Wi-Fi and cell signals into a fix.
+    final result = await LocationService.instance.current(
+      timeout: const Duration(seconds: 12),
+    );
+    nudge.cancel();
     if (!mounted) return;
     debugPrint(
       'location: problem=${result.problem.name} fix=${result.fix != null}',
@@ -561,8 +733,10 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
     _previewTimer?.cancel();
     if (!mounted) return;
     if (!_previewOn) setState(() => _previewOn = true);
+    if (_developerMode) return;
     _previewTimer = Timer(_previewWindow, () {
       if (!mounted) return;
+      if (_developerMode) return;
       // Do not go dark in the middle of a reading: a sighted helper following
       // the caption gets the whole sentence, then the screen fades.
       if (AudioBus.instance.reading.value) {
@@ -1090,6 +1264,28 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
         unawaited(_openLocationSettings());
       case VoiceCommand.toggleLanguage:
         _toggleLanguage();
+      case VoiceCommand.whichLanguage:
+        unawaited(_sayLanguage());
+      case VoiceCommand.whatMode:
+        unawaited(_sayMode());
+      case VoiceCommand.torchState:
+        unawaited(_sayTorchState());
+      case VoiceCommand.readingSpeed:
+        unawaited(_saySpeed());
+      case VoiceCommand.battery:
+        unawaited(_sayBattery());
+      case VoiceCommand.repeatAnswer:
+        unawaited(_repeatAnswer());
+      case VoiceCommand.neverMind:
+        unawaited(_handleNeverMind());
+      case VoiceCommand.readingProgress:
+        unawaited(_sayReadingProgress());
+      case VoiceCommand.questionColour:
+        unawaited(_sayColourInView());
+      case VoiceCommand.whatIsLeft:
+        unawaited(_saySide(ObjectDirection.left));
+      case VoiceCommand.whatIsRight:
+        unawaited(_saySide(ObjectDirection.right));
       case VoiceCommand.whoAreYou:
         unawaited(
           AudioBus.instance.say(
@@ -1336,6 +1532,16 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
               unawaited(_sayDate()),
           CustomSemanticsAction(label: _strings.actionLocation): () =>
               unawaited(_sayLocation()),
+          CustomSemanticsAction(label: _strings.actionBattery): () =>
+              unawaited(_sayBattery()),
+          CustomSemanticsAction(label: _strings.actionProgress): () =>
+              unawaited(_sayReadingProgress()),
+          CustomSemanticsAction(label: _strings.actionColour): () =>
+              unawaited(_sayColourInView()),
+          CustomSemanticsAction(label: _strings.actionLeft): () =>
+              unawaited(_saySide(ObjectDirection.left)),
+          CustomSemanticsAction(label: _strings.actionRight): () =>
+              unawaited(_saySide(ObjectDirection.right)),
         },
         excludeSemantics: true,
         child: Listener(
@@ -1365,14 +1571,16 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
                         ? _preview(controller)
                         : const SizedBox.shrink(),
                   ),
-                const IgnorePointer(
-                  child: ColoredBox(color: Color(0x66000000)),
-                ),
+                if (!_developerMode)
+                  const IgnorePointer(
+                    child: ColoredBox(color: Color(0x66000000)),
+                  ),
                 // The status panel stays visible even when the preview fades.
                 // A blank black screen with no text looks broken to a sighted
                 // helper; the phase label and last reading must always be
                 // readable.
                 Align(alignment: Alignment.bottomCenter, child: _statusPanel()),
+                _developerControls(),
               ],
             ),
           ),
@@ -1388,15 +1596,136 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
     // The preview is a courtesy for sighted helpers. It is dimmed and never
     // required: every decision in the app is spoken or felt. It fades out
     // after a few seconds; the camera keeps running behind the black screen.
+    // In developer mode, it stays fully bright and renders live bounding boxes.
     return Opacity(
-      opacity: 0.45,
+      opacity: _developerMode ? 1.0 : 0.45,
       child: ClipRect(
         child: FittedBox(
           fit: BoxFit.cover,
           child: SizedBox(
             width: size.height,
             height: size.width,
-            child: CameraPreview(controller),
+            child: Stack(
+              fit: StackFit.expand,
+              children: <Widget>[
+                CameraPreview(controller),
+                if (_developerMode &&
+                    _pipeline.interpretation == Interpretation.object)
+                  ValueListenableBuilder<List<DetectedObject>>(
+                    valueListenable: _pipeline.detectedObjects,
+                    builder: (context, objects, _) {
+                      return CustomPaint(
+                        size: Size(size.height, size.width),
+                        painter: ObjectBoundingBoxesPainter(objects),
+                      );
+                    },
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _developerControls() {
+    return Positioned(
+      top: 0,
+      left: 0,
+      right: 0,
+      child: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: <Widget>[
+              if (_developerMode &&
+                  _pipeline.interpretation == Interpretation.object)
+                ValueListenableBuilder<List<DetectedObject>>(
+                  valueListenable: _pipeline.detectedObjects,
+                  builder: (context, objects, _) {
+                    return Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withAlpha(200),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: const Color(0xFF00E676),
+                          width: 1.5,
+                        ),
+                      ),
+                      child: Text(
+                        '${objects.length} OBJECT${objects.length == 1 ? '' : 'S'}',
+                        style: const TextStyle(
+                          color: Color(0xFF00E676),
+                          fontWeight: FontWeight.bold,
+                          fontSize: 11,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
+                    );
+                  },
+                )
+              else
+                const SizedBox.shrink(),
+              Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(20),
+                  onTap: _toggleDeveloperMode,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
+                    decoration: BoxDecoration(
+                      color: _developerMode
+                          ? const Color(0xFF00E676)
+                          : Colors.black.withAlpha(180),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: _developerMode
+                            ? const Color(0xFF00E676)
+                            : Colors.white54,
+                        width: 1.5,
+                      ),
+                      boxShadow: const [
+                        BoxShadow(
+                          color: Colors.black45,
+                          blurRadius: 4,
+                          offset: Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          _developerMode
+                              ? Icons.developer_mode
+                              : Icons.bug_report,
+                          size: 16,
+                          color: _developerMode ? Colors.black : Colors.white,
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          _developerMode ? 'DEV ON' : 'DEV MODE',
+                          style: TextStyle(
+                            color: _developerMode ? Colors.black : Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 11,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
       ),
