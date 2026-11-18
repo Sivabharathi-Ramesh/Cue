@@ -60,9 +60,9 @@ class SceneRouter {
 
 /// What the user has told Cue to look for.
 ///
-/// The live screen starts in [text] because that is the only handler that is
-/// built. Swipe left or right cycles through the choices the specification
-/// names; the unbuilt ones answer honestly instead of pretending to see.
+/// The live screen starts in [text]. Swipe left or right cycles through the
+/// choices the specification names; [screen] has no handler yet and answers
+/// honestly instead of pretending to see.
 enum Interpretation {
   text('Text'),
   object('Object'),
@@ -79,5 +79,7 @@ enum Interpretation {
       values[(index - 1 + values.length) % values.length];
 
   bool get isBuilt =>
-      this == Interpretation.text || this == Interpretation.object;
+      this == Interpretation.text ||
+      this == Interpretation.object ||
+      this == Interpretation.banknote;
 }

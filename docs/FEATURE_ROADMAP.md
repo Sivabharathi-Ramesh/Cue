@@ -129,15 +129,22 @@ Do these only if you can rebuild, run `flutter test`, and reinstall by early eve
 
 ### 8. Indian rupee recognition
 
+**Status:** v1 built in `lib/vision/currency_service.dart`. It reads the printed denomination with the on-device OCR and refuses when the evidence is weak. A trained classifier is still the long-term fix for worn, folded or oddly lit notes.
+
 **Why:** currency is one of the highest-value daily tasks for blind users, and Google Lookout only covers a few currencies.
 
-**How:**
-- New `lib/vision/currency_service.dart` with a small TFLite classifier for ₹10/20/50/100/200/500/2000.
+**How v1 works:**
+- OCR the frame with the Latin recogniser: the denomination numerals and "RESERVE BANK OF INDIA" are Latin script.
+- Accept a value only as a standalone numeral. Serial numbers, prices, phone numbers and product codes are excluded by digit-run length and boundary rules.
+- Two different repeated values in one frame mean two notes: refuse rather than choose.
+- Speak only when a value repeats and is corroborated by the RBI banner or "RUPEES"; otherwise ask the user to show the whole note.
+- Two agreeing frames are required for automatic answers. A manual tap answers as soon as one frame repeats the value or shows the banner; a close-up with a single numeral gets a hedged answer instead of a refusal.
+- Hindi is frozen, so banknote mode speaks the digits and reuses the existing "unrecognised object" refusal.
+
+**Next, only after the pilot validates v1:**
 - Collect 50–100 images per class in different light, angles, wear, and backgrounds; split train/validation by note, not by image.
-- Add `Interpretation.currency`; handle it in `frame_pipeline` like object mode.
-- Speak only above a confidence threshold; otherwise “I cannot tell which note this is.”
+- Train a small TFLite classifier for ₹10/20/50/100/200/500/2000 and use OCR as a cross-check.
 - Add Hindi labels and tests; check RBI reproduction guidelines and legal advice.
-- Consider a fallback that reads the number printed on the note with OCR.
 
 **Acceptance:** 90%+ accuracy on a held-out set in good light; honest refusal on unclear notes.
 

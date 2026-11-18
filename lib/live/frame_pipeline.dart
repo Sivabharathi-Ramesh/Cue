@@ -15,6 +15,7 @@ import '../core/tts_service.dart';
 import '../vision/frame_source.dart';
 import '../vision/ocr_service.dart';
 import '../vision/camera_frame_encoder.dart';
+import '../vision/currency_service.dart';
 import '../vision/detected_object.dart';
 import '../vision/object_detect_service.dart';
 import '../vision/object_tracker.dart';
@@ -169,6 +170,44 @@ class FramePipeline {
 
   List<DetectedObject> get lastObjects => _lastObjects;
 
+  // --- Banknote mode --------------------------------------------------------
+
+  /// Banknote checks run a little slower than the camera because OCR is the
+  /// expensive part, but fast enough for two agreeing frames in about a
+  /// second. The shared recogniser stays free for text mode.
+  static const Duration _banknoteMinGap = Duration(milliseconds: 450);
+
+  /// A manual check waits this long for a confirming frame before refusing.
+  static const Duration _banknoteManualTimeout = Duration(milliseconds: 2500);
+
+  /// Minimum gap between automatic note announcements.
+  static const Duration _banknoteNarrationGap = Duration(milliseconds: 2600);
+
+  /// Consecutive agreeing frames before an automatic answer is spoken.
+  static const int _banknoteConfirmations = 2;
+
+  /// Frames without a readable note before the same value may be announced
+  /// again. Long enough that an intermittently-read note does not repeat.
+  static const int _banknoteForgetAfter = 6;
+
+  DateTime _lastBanknoteAt = DateTime.fromMillisecondsSinceEpoch(0);
+  int? _banknoteStreakValue;
+  int _banknoteStreakCount = 0;
+  BanknoteEvidence _banknoteStreakEvidence = BanknoteEvidence.none;
+  int _banknoteEmptyStreak = 0;
+  int _banknoteMisses = 0;
+  int? _announcedBanknote;
+  DateTime? _lastBanknoteSpokenAt;
+
+  /// Every candidate seen during a manual window, so a timeout can still say
+  /// the value it saw most often instead of a flat refusal.
+  final Map<int, int> _banknoteManualSeen = <int, int>{};
+  int? _banknoteManualLast;
+
+  /// A double tap asks for an answer even when one frame is not enough.
+  bool _banknoteManualPending = false;
+  DateTime? _banknoteManualDeadline;
+
   /// Whether developer inspection mode is enabled.
   ///
   /// When true, frame detection rate in object mode is faster to provide
@@ -187,7 +226,7 @@ class FramePipeline {
   Completer<DetectedObject?>? _objectOnRequest;
   ObjectDirection? _objectOnSide;
 
-  /// What the user last told Cue to look for. Text is the only built handler.
+  /// What the user last told Cue to look for.
   Interpretation _interpretation = Interpretation.text;
 
   Interpretation get interpretation => _interpretation;
@@ -212,6 +251,7 @@ class FramePipeline {
     _lastObjectSpokenAt = null;
     _lastObjects = const <DetectedObject>[];
     _objectTracker.reset();
+    _resetBanknote();
   }
 
   /// Switches the OCR script and clears every frame-to-frame gate.
@@ -306,7 +346,27 @@ class FramePipeline {
     _lastObjectSpokenAt = null;
     _lastObjects = const <DetectedObject>[];
     _objectTracker.reset();
+    _resetBanknote();
     _cancelQuestions();
+  }
+
+  /// Forgets every frame-to-frame note decision.
+  ///
+  /// Called when the mode changes and when the camera restarts, so a note seen
+  /// before a pause cannot be announced as if it were still in view.
+  void _resetBanknote() {
+    _lastBanknoteAt = DateTime.fromMillisecondsSinceEpoch(0);
+    _banknoteStreakValue = null;
+    _banknoteStreakCount = 0;
+    _banknoteStreakEvidence = BanknoteEvidence.none;
+    _banknoteEmptyStreak = 0;
+    _banknoteMisses = 0;
+    _announcedBanknote = null;
+    _lastBanknoteSpokenAt = null;
+    _banknoteManualSeen.clear();
+    _banknoteManualLast = null;
+    _banknoteManualPending = false;
+    _banknoteManualDeadline = null;
   }
 
   Future<void> _handle(CameraFrame frame) async {
@@ -333,14 +393,20 @@ class FramePipeline {
 
     // A moving phone produces blurred frames. Text reading waits for the hand
     // to settle; object mode keeps scanning, because panning is how a blind
-    // user searches for something. It runs slower and stays silent until the
-    // hand stops, so a blurred frame is analysed but never described.
+    // user searches for something. Banknote mode also waits for a steady
+    // frame: blurred numerals are exactly what makes a note misread.
     final moving = MotionMonitor.instance.isMoving;
-    if (moving && !_manualRequested && _objectOnRequest == null) {
+    if (moving &&
+        !_manualRequested &&
+        !_banknoteManualPending &&
+        _objectOnRequest == null) {
       // A long scan gets one "hold still" hint. A direct request does not:
       // the user is already waiting for an answer.
       _noteMovement(now);
-      if (_interpretation != Interpretation.object) return;
+      if (_interpretation != Interpretation.object &&
+          _interpretation != Interpretation.banknote) {
+        return;
+      }
     } else if (!moving) {
       _movingSince = null;
     }
@@ -393,6 +459,48 @@ class FramePipeline {
       _busy = true;
       try {
         await _detectObjects(frame, manual: manual, generation: generation);
+      } finally {
+        if (generation == _generation) _busy = false;
+      }
+      return;
+    }
+
+    // Banknote mode: the printed denomination is read by OCR, not by a
+    // classifier. A steady frame is required because motion blur turns an 8
+    // into a 3, and a wrong amount is an expensive thing to say confidently.
+    if (_interpretation == Interpretation.banknote) {
+      var manual = _manualRequested || _banknoteManualPending;
+      _manualRequested = false;
+
+      if (_banknoteManualPending) {
+        final deadline = _banknoteManualDeadline;
+        if (deadline != null && now.isAfter(deadline)) {
+          _banknoteManualPending = false;
+          _banknoteManualDeadline = null;
+          final seen = _banknoteManualChoice();
+          _banknoteManualSeen.clear();
+          _banknoteManualLast = null;
+          if (seen != null) {
+            _speakBanknoteUncertain(seen);
+          } else {
+            _speakBanknoteProblem(BanknoteProblem.unclear);
+          }
+          return;
+        }
+      } else if (manual) {
+        // Keep trying for a short window instead of answering from one frame
+        // that may not have been enough.
+        _banknoteManualPending = true;
+        _banknoteManualDeadline = now.add(_banknoteManualTimeout);
+      }
+
+      if (!manual && now.difference(_lastBanknoteAt) < _banknoteMinGap) {
+        return;
+      }
+
+      _busy = true;
+      try {
+        await _readBanknote(frame, manual: manual, generation: generation);
       } finally {
         if (generation == _generation) _busy = false;
       }
@@ -907,6 +1015,185 @@ class FramePipeline {
     );
   }
 
+  /// Reads one banknote frame and answers when the evidence is sufficient.
+  ///
+  /// Automatic answers need two agreeing frames. A manual double tap answers
+  /// as soon as one frame repeats the value or sees the RBI banner. A close-up
+  /// that shows only one numeral is spoken with an explicit hedge rather than
+  /// stated as fact, because "₹200" for a ₹2000 note costs real money.
+  Future<void> _readBanknote(
+    CameraFrame frame, {
+    required bool manual,
+    required int generation,
+  }) async {
+    _lastBanknoteAt = DateTime.now();
+
+    final rotation = rotationDegrees(
+      frame.description,
+      frame.deviceOrientation,
+    );
+    final read = await OcrService.instance.readLiveFrame(
+      nv21: frame.nv21,
+      width: frame.image.width,
+      height: frame.image.height,
+      rotation: rotation,
+      bytesPerRow: frame.bytesPerRow,
+      // The denomination numerals and the RBI banner are Latin script, so a
+      // note reads the same whichever language the app is set to.
+      language: CueLanguage.english,
+    );
+    if (generation != _generation) return;
+
+    final reading = analyseBanknoteText(read.text);
+    if (kDebugMode) {
+      final preview = read.text.replaceAll('\n', ' ').trim();
+      debugPrint(
+        'live: banknote $reading chars=${read.text.length} manual=$manual '
+        'text=${preview.length > 120 ? preview.substring(0, 120) : preview}',
+      );
+    }
+
+    final value = reading.rupees;
+    if (value == null) {
+      _noteBanknoteMiss();
+      // A manual request is not refused on one empty frame. OCR misses a note
+      // at an angle or in a shadow; the timeout decides when to give up.
+      return;
+    }
+
+    if (manual) {
+      _banknoteManualSeen.update(
+        value,
+        (count) => count + 1,
+        ifAbsent: () => 1,
+      );
+      _banknoteManualLast = value;
+    }
+
+    if (_banknoteStreakValue == value) {
+      _banknoteStreakCount++;
+      if (reading.evidence.index > _banknoteStreakEvidence.index) {
+        _banknoteStreakEvidence = reading.evidence;
+      }
+    } else {
+      _banknoteStreakValue = value;
+      _banknoteStreakCount = 1;
+      _banknoteStreakEvidence = reading.evidence;
+    }
+    _banknoteEmptyStreak = 0;
+    _banknoteMisses = 0;
+
+    // A manual check answers as soon as one frame repeats the value or sees
+    // the banner, which is what makes a close-up usable in under a second.
+    // Automatic narration always wants two frames.
+    final corroborated =
+        reading.evidence.index >= BanknoteEvidence.medium.index;
+    final confirmed =
+        _banknoteStreakCount >= _banknoteConfirmations ||
+        (manual && corroborated);
+    if (!confirmed) return;
+
+    final now = DateTime.now();
+    if (!manual) {
+      final canNarrate =
+          !AudioBus.instance.hasReading &&
+          !AudioBus.instance.speaking.value &&
+          !AudioBus.instance.isMuted &&
+          !MotionMonitor.instance.isMoving;
+      final due =
+          _lastBanknoteSpokenAt == null ||
+          now.difference(_lastBanknoteSpokenAt!) >= _banknoteNarrationGap;
+      // Holding the same note still must not repeat the amount every few
+      // seconds. A different value is new information and is spoken.
+      if (!canNarrate || !due || _announcedBanknote == value) return;
+    }
+
+    final uncertain = _banknoteStreakEvidence == BanknoteEvidence.weak;
+
+    _announcedBanknote = value;
+    _lastBanknoteSpokenAt = now;
+    _banknoteManualPending = false;
+    _banknoteManualDeadline = null;
+    _banknoteManualSeen.clear();
+    _banknoteManualLast = null;
+
+    final text = uncertain
+        ? _strings.banknoteUncertain(value)
+        : _strings.banknoteAnswer(value);
+    onResult(text);
+    unawaited(
+      AudioBus.instance.say(
+        text,
+        priority: manual ? SpeechPriority.answer : SpeechPriority.navigation,
+      ),
+    );
+  }
+
+  /// Counts a frame with no denomination.
+  ///
+  /// One empty frame between two readings is normal OCR jitter, so the
+  /// agreeing-value streak survives it. The last announcement is only
+  /// forgotten after the note has been out of view for a while, which is what
+  /// lets the user put a note down and show the same value again later.
+  void _noteBanknoteMiss() {
+    _banknoteEmptyStreak++;
+    _banknoteMisses++;
+    if (_banknoteEmptyStreak >= 2) {
+      _banknoteStreakValue = null;
+      _banknoteStreakCount = 0;
+    }
+    if (_banknoteMisses >= _banknoteForgetAfter) {
+      _announcedBanknote = null;
+    }
+  }
+
+  /// The value seen most often in a manual window, or null.
+  int? _banknoteManualChoice() {
+    if (_banknoteManualSeen.isEmpty) return null;
+
+    int? best;
+    var bestCount = 0;
+    for (final entry in _banknoteManualSeen.entries) {
+      if (entry.value > bestCount) {
+        best = entry.key;
+        bestCount = entry.value;
+      }
+    }
+
+    // A tie goes to the most recent candidate: that is the one in view now.
+    final last = _banknoteManualLast;
+    if (best != null &&
+        last != null &&
+        _banknoteManualSeen[last] == bestCount) {
+      return last;
+    }
+    return best;
+  }
+
+  /// Speaks a value Cue saw but could not corroborate.
+  ///
+  /// The sentence is hedged in English. Hindi is frozen, so it falls back to
+  /// the existing "unrecognised" line rather than asserting a maybe as fact.
+  void _speakBanknoteUncertain(int value) {
+    if (AudioBus.instance.isMuted) return;
+    _lastBanknoteSpokenAt = DateTime.now();
+    _announcedBanknote = value;
+    final text = _strings.banknoteUncertain(value);
+    onResult(text);
+    unawaited(AudioBus.instance.say(text, priority: SpeechPriority.answer));
+  }
+
+  /// Answers a manual check that did not produce a value.
+  void _speakBanknoteProblem(BanknoteProblem problem) {
+    if (AudioBus.instance.isMuted) return;
+    _lastBanknoteSpokenAt = DateTime.now();
+    final text = problem == BanknoteProblem.mixedNotes
+        ? _strings.banknoteSeveralNotes
+        : _strings.banknoteNotRecognised;
+    onResult(text);
+    unawaited(AudioBus.instance.say(text, priority: SpeechPriority.answer));
+  }
+
   /// The part of a description that makes it worth saying again.
   ///
   /// Class, direction and distance band. Confidence and exact pixels are
@@ -1041,7 +1328,8 @@ class FramePipeline {
   void _noteMovement(DateTime now) {
     _movingSince ??= now;
     if (_interpretation != Interpretation.text &&
-        _interpretation != Interpretation.object) {
+        _interpretation != Interpretation.object &&
+        _interpretation != Interpretation.banknote) {
       return;
     }
     if (now.difference(_movingSince!) < const Duration(seconds: 2)) return;

@@ -251,6 +251,37 @@ class CueStrings {
       ? 'वस्तु मोड।'
       : 'Object mode. Point the camera at an object.';
 
+  /// Banknote mode is built for English first.
+  ///
+  /// Hindi is frozen for the pilot, so there is no new Hindi instruction here.
+  /// The existing one-word mode name is used instead of inventing wording.
+  String get banknoteModeAnnouncement => _hi
+      ? modeName('Banknote')
+      : 'Banknote mode. Hold one note flat, whole note in view. '
+            'Double tap to check.';
+
+  /// The value of a note Cue is sure about.
+  String banknoteAnswer(int rupees) => spokenRupeeAmount(rupees, hindi: _hi);
+
+  String get banknoteNotRecognised => _hi
+      ? somethingThere
+      : 'I cannot read the note. Move the phone back until the whole note '
+            'fits, then hold still.';
+
+  /// A value Cue saw but could not corroborate in one frame.
+  ///
+  /// Spoken only with an explicit hedge, so a close-up that hides the rest of
+  /// the note is still useful without pretending the value is certain.
+  String banknoteUncertain(int rupees) => _hi
+      ? somethingThere
+      : 'I think it is '
+            '${spokenRupeeAmount(rupees, hindi: false).toLowerCase()} '
+            'I cannot see the whole note.';
+
+  String get banknoteSeveralNotes => _hi
+      ? somethingThere
+      : 'More than one note value is in view. Show one note at a time.';
+
   String get textModeAnnouncement => _hi
       ? 'पाठ मोड।'
       : 'Text mode.';
@@ -338,4 +369,23 @@ class CueStrings {
   String get actionLeft => _hi ? 'बाईं ओर क्या है' : 'What is on my left';
 
   String get actionRight => _hi ? 'दाईं ओर क्या है' : 'What is on my right';
+}
+
+/// The value of a confirmed banknote, as Cue says it.
+///
+/// English uses words, because "five hundred rupees" is easier to follow than
+/// "500 rupees". Hindi is frozen for the pilot, so it speaks the digits and
+/// lets the installed Hindi voice read them; that adds no new Hindi wording.
+String spokenRupeeAmount(int rupees, {required bool hindi}) {
+  if (hindi) return '$rupees';
+  return switch (rupees) {
+    10 => 'Ten rupees.',
+    20 => 'Twenty rupees.',
+    50 => 'Fifty rupees.',
+    100 => 'One hundred rupees.',
+    200 => 'Two hundred rupees.',
+    500 => 'Five hundred rupees.',
+    2000 => 'Two thousand rupees.',
+    _ => '$rupees rupees.',
+  };
 }

@@ -943,12 +943,16 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
       debugPrint('live: interpretation ${next.name}');
     }
 
+    final announcement = switch (next) {
+      Interpretation.text => _strings.textModeAnnouncement,
+      Interpretation.object => _strings.objectModeAnnouncement,
+      Interpretation.banknote => _strings.banknoteModeAnnouncement,
+      Interpretation.screen => _strings.notBuilt(
+        _strings.modeName(next.label),
+      ),
+    };
     await AudioBus.instance.say(
-      next == Interpretation.text
-          ? _strings.textModeAnnouncement
-          : next == Interpretation.object
-          ? _strings.objectModeAnnouncement
-          : _strings.notBuilt(_strings.modeName(next.label)),
+      announcement,
       priority: SpeechPriority.navigation,
     );
   }
@@ -1360,9 +1364,7 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
             : 'Microphone access is off. Open Settings, Permissions, '
                   'Microphone, and allow it for Cue.';
       case VoiceProblem.noSpeech:
-        return hi
-            ? 'आवाज़ नहीं सुनी।'
-            : 'No speech heard.';
+        return hi ? 'आवाज़ नहीं सुनी।' : 'No speech heard.';
       case VoiceProblem.noMatch:
         return hi
             ? 'मैं समझा नहीं। मदद कहें।'

@@ -60,7 +60,7 @@ A language choice is deliberately deferred until English is validated with real 
 ### In session
 
 - Swipe sideways or say “text mode” / “object mode.”
-- Only built modes appear in the swipe cycle. If the user explicitly asks for Banknote or Screen, answer honestly that it is not built.
+- Only built modes appear in the swipe cycle: text, object and banknote. If the user explicitly asks for Screen, answer honestly that it is not built.
 - The status panel shows the current mode for sighted helpers.
 
 ---
@@ -178,7 +178,7 @@ Reading is the right first mode, but it needs depth more than breadth:
 - **Hindi quality:** test real Hindi labels, not just clean printed pages.
 - **TTS fallback:** if the Hindi voice is missing, explain how to install it or offer English.
 
-Do these before Currency, Screen, or a home screen.
+Do these before Screen mode or a home screen.
 
 ---
 

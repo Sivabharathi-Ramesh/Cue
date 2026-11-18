@@ -76,10 +76,10 @@ void main() {
       expect(Interpretation.object.previous, Interpretation.text);
     });
 
-    test('only text has a built handler in this build', () {
+    test('only text, object and banknote have handlers in this build', () {
       expect(Interpretation.text.isBuilt, isTrue);
       expect(Interpretation.object.isBuilt, isTrue);
-      expect(Interpretation.banknote.isBuilt, isFalse);
+      expect(Interpretation.banknote.isBuilt, isTrue);
       expect(Interpretation.screen.isBuilt, isFalse);
     });
   });
