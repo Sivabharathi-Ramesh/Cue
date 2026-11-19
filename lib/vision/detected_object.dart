@@ -1,5 +1,6 @@
 import 'dart:ui';
 
+import '../core/search_target.dart';
 import 'object_colour.dart';
 
 /// Where an object sits relative to the person holding the phone.
@@ -447,3 +448,13 @@ const Set<String> _tallClasses = {
   'fire extinguisher',
   'thermos',
 };
+
+/// A smaller box is allowed during a deliberate search. Keep the strict
+/// confidence requirement; the search also checks agreement across frames.
+bool isSearchCandidate(DetectedObject item, SearchTarget target) =>
+    target.labels.contains(item.name) &&
+    item.box.width > 0 &&
+    item.box.height > 0 &&
+    item.area >= 0.001 &&
+    item.area <= 0.94 &&
+    isConfidentDetection(item, lenient: false);

@@ -1,3 +1,5 @@
+import 'search_target.dart';
+
 /// The spoken commands Cue understands.
 ///
 /// Kept separate from the speech-recognition plugin so the parsing rules can be
@@ -16,8 +18,15 @@ enum VoiceCommand {
   faster,
   textMode,
   objectMode,
+  findKeys(SearchTarget.keys),
+  findPhone(SearchTarget.phone),
+  findGlasses(SearchTarget.glasses),
+  findPen(SearchTarget.pen),
+  findBottle(SearchTarget.bottle),
   banknoteMode,
   screenMode,
+  autoDescriptionsOn,
+  autoDescriptionsOff,
   showPreview,
   hindiMode,
   englishMode,
@@ -44,7 +53,10 @@ enum VoiceCommand {
   questionColour,
   whatIsLeft,
   whatIsRight,
-  unknown,
+  unknown;
+
+  const VoiceCommand([this.target]);
+  final SearchTarget? target;
 }
 
 /// Turns a recognised sentence into one command.
@@ -75,6 +87,43 @@ VoiceCommand parseVoiceCommand(String transcript) {
   bool exact(String phrase) => text == _normalize(phrase);
 
   bool near(String word) => _near(text, word);
+
+  if (has('stop searching') || has('cancel search') || has('खोज बंद')) {
+    return VoiceCommand.stop;
+  }
+  if (has('find') || has('खोजो') || has('ढूंढो') || has('ढूँढो')) {
+    for (final command in VoiceCommand.values) {
+      final target = command.target;
+      if (target == null) continue;
+      final names = {
+        target.english.toLowerCase(),
+        ...target.labels,
+        if (target == SearchTarget.keys) 'key',
+      };
+      for (final name in names) {
+        if (has('find my $name') || has('find the $name') || has('find $name')) {
+          return command;
+        }
+      }
+      final hindiNames = {
+        target.hindi,
+        if (target == SearchTarget.pen) 'कलम',
+        if (target == SearchTarget.phone) 'मोबाइल',
+      };
+      for (final name in hindiNames) {
+        if (has('$name खोजो') || has('$name ढूंढो') || has('$name ढूँढो')) {
+          return command;
+        }
+      }
+    }
+  }
+
+  if (has('automatic descriptions on') || has('ऑटो विवरण चालू')) {
+    return VoiceCommand.autoDescriptionsOn;
+  }
+  if (has('automatic descriptions off') || has('ऑटो विवरण बंद')) {
+    return VoiceCommand.autoDescriptionsOff;
+  }
 
   // Language switching comes first: "हिंदी" must never be mistaken for a
   // read command, and "english" must not be caught by another phrase.

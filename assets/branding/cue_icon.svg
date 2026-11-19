@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024"
+     viewBox="0 0 256 256" role="img" aria-labelledby="cue-icon-title cue-icon-description">
+  <title id="cue-icon-title">Cue app icon</title>
+  <desc id="cue-icon-description">A white C shaped like a speech bubble with three mint audio bars on an indigo tile.</desc>
+  <defs>
+    <linearGradient id="cue-indigo" x1="0" y1="0" x2="0.85" y2="1">
+      <stop offset="0" stop-color="#3D46CF"/>
+      <stop offset="0.54" stop-color="#2729A4"/>
+      <stop offset="1" stop-color="#151454"/>
+    </linearGradient>
+    <linearGradient id="cue-white" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#EEF0FF"/>
+    </linearGradient>
+  </defs>
+  <rect width="256" height="256" fill="url(#cue-indigo)"/>
+  <g transform="translate(2 -2)">
+    <path fill="url(#cue-white)" d="M172.8 78.8
+      C178.3 84.2 178.4 92.8 173 98.3
+      C167.7 103.8 159 103.9 153.5 98.5
+      C145 90.2 134 85.7 121.7 85.7
+      C97.3 85.7 77.5 105.5 77.5 130
+      C77.5 154.4 97.3 174.2 121.7 174.2
+      C134 174.2 145 169.7 153.5 161.5
+      C159 156.1 167.7 156.2 173 161.7
+      C178.4 167.1 178.3 175.8 172.8 181.2
+      C159.3 194.3 141.5 201.4 121.7 201.4
+      C108.9 201.4 96.8 198.1 86.3 192.2
+      L61.9 201.4
+      C58.4 202.7 55.3 199.7 56.6 196.2
+      L65.2 173.8
+      C55.7 161.1 50.5 146.2 50.5 130
+      C50.5 90.6 82.3 58.6 121.7 58.6
+      C141.5 58.6 159.3 65.7 172.8 78.8Z"/>
+    <g fill="#72FCB0">
+      <rect x="142" y="119" width="12" height="22" rx="6"/>
+      <rect x="164" y="108" width="12" height="44" rx="6"/>
+      <rect x="186" y="115" width="12" height="30" rx="6"/>
+    </g>
+  </g>
+</svg>

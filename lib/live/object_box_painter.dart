@@ -52,15 +52,12 @@ class ObjectBoundingBoxesPainter extends CustomPainter {
         ..strokeWidth = 3.0;
       canvas.drawRect(rect, boxPaint);
 
-      // 3. Label text: Name + Confidence % (+ distance if known)
+      // 3. Label text: Name + Confidence %
       final confPercent = (object.confidence * 100).round();
-      final dist = object.distanceMeters;
       final name = object.isAmbiguous
           ? '${object.label}? (${object.name})'
           : object.name;
-      final label = dist != null
-          ? '${name.toUpperCase()} $confPercent% • ${dist.toStringAsFixed(1)}m'
-          : '${name.toUpperCase()} $confPercent%';
+      final label = '${name.toUpperCase()} $confPercent%';
 
       final textSpan = TextSpan(
         text: label,

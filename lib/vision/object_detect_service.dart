@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart' show kDebugMode, debugPrint;
 import 'package:ultralytics_yolo/ultralytics_yolo.dart';
 
 import 'detected_object.dart';
+import '../core/search_target.dart';
 import 'object_colour.dart';
 
 /// On-device object detection.
@@ -82,6 +83,7 @@ class ObjectDetectService {
     Uint8List jpeg, {
     int maxObjects = 3,
     bool lenient = false,
+    SearchTarget? searchTarget,
   }) async {
     if (jpeg.length < 32) return const <DetectedObject>[];
     await _ensureLoaded();
@@ -114,6 +116,13 @@ class ObjectDetectService {
           'live: raw ${rawObjects.length} '
           '${top.take(8).map((o) => '${o.name} ${(o.confidence * 100).round()}').join(', ')}',
         );
+      }
+
+      if (searchTarget != null) {
+        // Inspect every candidate before general scene ranking and size filters.
+        return rawObjects.where((item) =>
+            isSearchCandidate(item, searchTarget) &&
+            !resolveObjectAmbiguity(item, rawObjects).isAmbiguous).toList();
       }
 
       final objects = rawObjects.where(_plausible).toList();

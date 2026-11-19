@@ -35,6 +35,7 @@ const Map<String, String> englishToHindiObjectLabels = {
   'backpack': 'बैगपैक',
   'umbrella': 'छाता',
   'handbag': 'हैंडबैग',
+  'bag': 'बैग',
   'tie': 'टाई',
   'suitcase': 'सूटकेस',
   'keyboard': 'कीबोर्ड',
@@ -256,7 +257,7 @@ String _englishGroupKey(DetectedObject object, bool includeDistance) {
 
 String _englishGroup(_EnglishGroup group, bool includeDistance) {
   final object = group.object;
-  final label = object.label;
+  final label = object.label == 'handbag' ? 'bag' : object.label;
   final colour = objectSpeaksColour(label) ? object.colour : null;
   final descriptor = colour == null ? '' : '${englishColourName(colour)} ';
 
@@ -264,6 +265,13 @@ String _englishGroup(_EnglishGroup group, bool includeDistance) {
       ? _capitalise('$descriptor$label')
       : '${_capitalise(_numberWord(group.count))} $descriptor'
             '${englishPluralObjectLabel(label, group.count)}';
+  if (!includeDistance) {
+    return switch (object.direction) {
+      ObjectDirection.ahead => '$name, centre of view.',
+      ObjectDirection.left => '$name, left of view.',
+      ObjectDirection.right => '$name, right of view.',
+    };
+  }
   final distance = includeDistance ? englishObjectDistancePhrase(object) : null;
 
   switch (object.direction) {
@@ -348,9 +356,17 @@ String _numberWord(int count) {
 }
 
 String _hindiObject(DetectedObject object, bool includeDistance) {
-  final base = englishToHindiObjectLabels[object.label] ?? object.label;
+  final label = object.label == 'handbag' ? 'bag' : object.label;
+  final base = englishToHindiObjectLabels[label] ?? label;
   final colour = objectSpeaksColour(object.label) ? object.colour : null;
   final name = colour == null ? base : '${hindiColourName(colour)} $base';
+  if (!includeDistance) {
+    return switch (object.direction) {
+      ObjectDirection.ahead => '$name, दृश्य के बीच में।',
+      ObjectDirection.left => '$name, दृश्य में बाईं ओर।',
+      ObjectDirection.right => '$name, दृश्य में दाईं ओर।',
+    };
+  }
   final direction = switch (object.direction) {
     ObjectDirection.ahead => 'सामने',
     ObjectDirection.left => 'आपके बाईं ओर',
@@ -463,4 +479,4 @@ String _capitalise(String value) {
 /// A spoken message for a frame with no confident detections.
 String noObjectsMessage({required bool hindi}) => hindi
     ? 'सामने कोई वस्तु स्पष्ट नहीं दिख रही। कैमरा किसी चीज़ की ओर रखें।'
-    : 'I cannot see any object clearly in front of you. Point the camera at one.';
+    : 'I couldn’t identify it. Try another angle.';

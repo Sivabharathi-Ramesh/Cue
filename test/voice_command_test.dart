@@ -2,6 +2,33 @@ import 'package:cue/core/voice_command.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test('find an everyday item in English and Hindi', () {
+    expect(parseVoiceCommand('find my keys'), VoiceCommand.findKeys);
+    expect(parseVoiceCommand('find my phone'), VoiceCommand.findPhone);
+    expect(parseVoiceCommand('चश्मा ढूंढो'), VoiceCommand.findGlasses);
+    expect(parseVoiceCommand('कलम खोजो'), VoiceCommand.findPen);
+    expect(parseVoiceCommand('find the water bottle'), VoiceCommand.findBottle);
+    expect(parseVoiceCommand('cancel search'), VoiceCommand.stop);
+  });
+
+  test('switch automatic object descriptions on and off', () {
+    expect(
+      parseVoiceCommand('automatic descriptions on'),
+      VoiceCommand.autoDescriptionsOn,
+    );
+    expect(
+      parseVoiceCommand('automatic descriptions off'),
+      VoiceCommand.autoDescriptionsOff,
+    );
+    expect(
+      parseVoiceCommand('ऑटो विवरण चालू'),
+      VoiceCommand.autoDescriptionsOn,
+    );
+    expect(
+      parseVoiceCommand('ऑटो विवरण बंद'),
+      VoiceCommand.autoDescriptionsOff,
+    );
+  });
   group('reading commands', () {
     test('read, scan and read now', () {
       expect(parseVoiceCommand('read'), VoiceCommand.readNow);

@@ -56,11 +56,8 @@ class ColourReading {
 /// format `ui.Image.toByteData` produces. [box] is in normalised coordinates
 /// (0-1) like the detector's own boxes.
 ///
-/// The middle 70% of the box is used on purpose: box edges almost always
-/// include background, and a table behind a red mug would otherwise turn the
-/// mug brown. Near-white highlights and near-black shadows are ignored when
-/// there is enough mid-tone colour left, so a shiny bottle keeps its own hue
-/// instead of becoming "white".
+/// Samples the central patch to reduce background contamination. Each pixel
+/// votes for its own colour family, so mixed hues cannot invent a third hue.
 ColourReading? dominantColourInBox(
   Uint8List rgba,
   int width,
@@ -80,25 +77,19 @@ ColourReading? dominantColourInBox(
   final boxHeight = bottom - top;
   if (boxWidth < 3 || boxHeight < 3) return null;
 
-  // Inset by 15% on each side; see the doc comment.
-  final x0 = (left + boxWidth * 0.15).round();
-  final x1 = (right - boxWidth * 0.15).round();
-  final y0 = (top + boxHeight * 0.15).round();
-  final y1 = (bottom - boxHeight * 0.15).round();
+  // Leave the outer 30% on each side out of the vote.
+  final x0 = (left + boxWidth * 0.30).round();
+  final x1 = (right - boxWidth * 0.30).round();
+  final y0 = (top + boxHeight * 0.30).round();
+  final y1 = (bottom - boxHeight * 0.30).round();
   if (x1 - x0 < 2 || y1 - y0 < 2) return null;
 
   final stepX = math.max(1, (x1 - x0) ~/ 18);
   final stepY = math.max(1, (y1 - y0) ~/ 18);
 
-  // Hue histogram: 12 buckets of 30 degrees.
-  final hueBucket = List<int>.filled(12, 0);
+  final votes = List<int>.filled(ObjectColour.values.length, 0);
+  final lightnessSum = List<double>.filled(ObjectColour.values.length, 0);
   var samples = 0;
-  var saturated = 0;
-  var satHueX = 0.0;
-  var satHueY = 0.0;
-  var satLightness = 0.0;
-  var allLightness = 0.0;
-  var allSaturation = 0.0;
 
   for (var y = y0; y <= y1; y += stepY) {
     for (var x = x0; x <= x1; x += stepX) {
@@ -117,62 +108,34 @@ ColourReading? dominantColourInBox(
       final lightness = (maxC + minC) / 2;
       final saturation = maxC <= 0 ? 0.0 : delta / maxC;
 
-      samples++;
-      allLightness += lightness;
-      allSaturation += saturation;
-
-      // Punch-through highlights and deep shadow say nothing about the paint
-      // or plastic the object is made of.
-      final isHighlight = lightness > 0.93 && saturation < 0.25;
-      final isShadow = lightness < 0.09;
-      if (isHighlight || isShadow) continue;
-
-      if (saturation >= 0.18) {
+      final ObjectColour family;
+      if (saturation < 0.18 || lightness < 0.09) {
+        family = _achromaticName(lightness);
+      } else {
         final hue = _hue(r, g, b, maxC, delta);
-        final bucket = ((hue / 30).floor()) % 12;
-        hueBucket[bucket]++;
-        saturated++;
-        // Weight the mean hue by saturation: a faint tint should not drag a
-        // strong colour off its true name.
-        final angle = hue * math.pi / 180.0;
-        satHueX += math.cos(angle) * saturation;
-        satHueY += math.sin(angle) * saturation;
-        satLightness += lightness;
+        family = hue >= 12 && hue < 48 && lightness < 0.45
+            ? ObjectColour.brown
+            : _hueName(hue);
       }
+      votes[family.index]++;
+      lightnessSum[family.index] += lightness;
+      samples++;
     }
   }
 
-  if (samples == 0) return null;
-
-  final meanLightness = allLightness / samples;
-  final meanSaturation = allSaturation / samples;
-
-  // Almost no colour anywhere: black, white or grey by brightness alone.
-  if (saturated < samples * 0.12 || meanSaturation < 0.12) {
-    return ColourReading(_achromaticName(meanLightness));
-  }
-
-  final hue = _circularMeanHue(satHueX, satHueY);
-  final shadeLightness = satLightness / saturated;
-
-  // A dark orange-red is brown, and that is what people call wood, leather and
-  // cardboard.
-  if (hue >= 12 && hue < 48 && shadeLightness < 0.45) {
-    return const ColourReading(ObjectColour.brown);
-  }
-
-  final colour = _hueName(hue);
-  if (colour == ObjectColour.black || colour == ObjectColour.white) {
+  if (samples < 9) return null;
+  final count = votes.reduce(math.max);
+  if (count < samples * 0.70) return null;
+  final index = votes.indexOf(count);
+  final colour = ObjectColour.values[index];
+  if (colour == ObjectColour.brown ||
+      colour == ObjectColour.white ||
+      colour == ObjectColour.grey ||
+      colour == ObjectColour.black) {
     return ColourReading(colour);
   }
-
-  // "Dark black" and "light white" are nonsense; the shade words only apply to
-  // real hues.
-  return ColourReading(
-    colour,
-    dark: shadeLightness < 0.28,
-    light: shadeLightness > 0.72,
-  );
+  final lightness = lightnessSum[index] / count;
+  return ColourReading(colour, dark: lightness < 0.28, light: lightness > 0.72);
 }
 
 /// English phrase for a reading: "dark blue", "grey", "red".
@@ -237,14 +200,6 @@ double _hue(double r, double g, double b, double maxC, double delta) {
   }
   if (hue < 0) hue += 360;
   return hue;
-}
-
-double _circularMeanHue(double x, double y) {
-  if (x == 0 && y == 0) return 0;
-  final angle = math.atan2(y, x);
-  var degrees = angle * 180 / math.pi;
-  if (degrees < 0) degrees += 360;
-  return degrees;
 }
 
 ObjectColour _hueName(double hue) {

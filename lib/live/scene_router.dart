@@ -73,10 +73,13 @@ enum Interpretation {
 
   final String label;
 
-  Interpretation get next => values[(index + 1) % values.length];
+  static const available = [text, object, banknote];
+
+  Interpretation get next =>
+      available[(available.indexOf(this) + 1) % available.length];
 
   Interpretation get previous =>
-      values[(index - 1 + values.length) % values.length];
+      available[(available.indexOf(this) - 1) % available.length];
 
   bool get isBuilt =>
       this == Interpretation.text ||

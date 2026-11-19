@@ -1,13 +1,17 @@
 import 'package:flutter/material.dart';
 
 import 'core/cue_language.dart';
+import 'core/object_preferences.dart';
 import 'live/live_screen.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   // The saved language must be known before the first OCR warm-up and before
   // the first spoken sentence, otherwise a Hindi user hears an English intro.
-  await LanguageService.instance.init();
+  await Future.wait([
+    LanguageService.instance.init(),
+    ObjectPreferences.instance.load(),
+  ]);
   runApp(const CueApp());
 }
 

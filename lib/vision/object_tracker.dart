@@ -1,6 +1,33 @@
 import 'dart:ui';
 
 import 'detected_object.dart';
+import 'object_colour.dart';
+
+/// Spatial agreement across two fresh frames for one user-requested look.
+class ManualObjectScan {
+  final _tracker = ObjectTracker(passesToConfirm: 2);
+  DateTime? _firstFrameAt;
+
+  bool ready(DateTime now) {
+    final first = _firstFrameAt;
+    return first == null ||
+        now.difference(first) >= const Duration(milliseconds: 300);
+  }
+
+  /// Null means wait for the second frame. An empty list is a final miss.
+  List<DetectedObject>? observe(
+    DateTime capturedAt,
+    List<DetectedObject> seen,
+  ) {
+    if (!ready(capturedAt)) return null;
+    final confirmed = _tracker.update(seen);
+    if (_firstFrameAt == null) {
+      _firstFrameAt = capturedAt;
+      return null;
+    }
+    return confirmed;
+  }
+}
 
 /// Requires an object to be seen more than once before Cue trusts it.
 ///
@@ -171,7 +198,9 @@ class ObjectTracker {
 }
 
 class _Track {
-  _Track({required this.id, required this.object});
+  _Track({required this.id, required this.object}) : lastSample = object.colour;
+
+  ColourReading? lastSample;
 
   final int id;
   DetectedObject object;
@@ -191,13 +220,12 @@ class _Track {
       name: next.name,
       confidence: _lerp(object.confidence, next.confidence, alpha),
       box: box,
-      // Colour is sampled per frame. Keeping the last known reading avoids
-      // losing the colour entirely when one frame is too small to sample.
-      colour: next.colour ?? object.colour,
+      colour: next.colour?.colour == lastSample?.colour ? next.colour : null,
       // Certainty can improve or degrade between frames; the current frame's
       // label is the one the track is now matching on.
       spokenAs: next.spokenAs,
     );
+    lastSample = next.colour;
     hits++;
     misses = 0;
   }

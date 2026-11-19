@@ -11,6 +11,7 @@ import '../core/cue_strings.dart';
 import '../core/feedback.dart';
 import '../core/motion_monitor.dart';
 import '../core/text_similarity.dart';
+import '../core/search_target.dart';
 import '../core/tts_service.dart';
 import '../vision/frame_source.dart';
 import '../vision/ocr_service.dart';
@@ -36,6 +37,8 @@ class FramePipeline {
   FramePipeline({
     required this.onResult,
     this.onCue,
+    this.isTorchOn,
+    this.waitingForTorch,
     CueLanguage language = CueLanguage.english,
   }) : _language = language; // ignore: prefer_initializing_formals
 
@@ -45,6 +48,8 @@ class FramePipeline {
 
   /// Called when an aiming instruction is issued, for logging or the caption.
   final void Function(AimingCue cue)? onCue;
+  final bool Function()? isTorchOn;
+  final bool Function()? waitingForTorch;
 
   CueLanguage _language;
 
@@ -142,7 +147,10 @@ class FramePipeline {
   /// requests ignore it.
   static const Duration _objectNarrationGap = Duration(milliseconds: 2600);
 
-  /// Requires an object to be seen twice before Cue trusts it.
+  ManualObjectScan? _requestedLook;
+  Timer? _lookTimeout;
+
+  /// Tracks objects across automatic scans.
   final ObjectTracker _objectTracker = ObjectTracker();
 
   /// When the object mode last analysed a frame.
@@ -227,6 +235,8 @@ class FramePipeline {
   ObjectDirection? _objectOnSide;
 
   /// What the user last told Cue to look for.
+  bool automaticDescriptions = false;
+
   Interpretation _interpretation = Interpretation.text;
 
   Interpretation get interpretation => _interpretation;
@@ -237,21 +247,8 @@ class FramePipeline {
   /// the user which mode was chosen; this method only changes state.
   void setInterpretation(Interpretation value) {
     if (value == _interpretation) return;
+    reset();
     _interpretation = value;
-    detectedObjects.value = const <DetectedObject>[];
-    _stability.reset();
-    _untrustedStreak = 0;
-    _notTextStreak = 0;
-    _lastHonestyAt = null;
-    _lastNotTextAt = null;
-    _lastAttempt = DateTime.fromMillisecondsSinceEpoch(0);
-    _lastOcr = DateTime.fromMillisecondsSinceEpoch(0);
-    _lastObjectAt = DateTime.fromMillisecondsSinceEpoch(0);
-    _describedObjectCounts = <String, int>{};
-    _lastObjectSpokenAt = null;
-    _lastObjects = const <DetectedObject>[];
-    _objectTracker.reset();
-    _resetBanknote();
   }
 
   /// Switches the OCR script and clears every frame-to-frame gate.
@@ -271,9 +268,94 @@ class FramePipeline {
     unawaited(_handle(frame));
   }
 
+  ObjectTracker? _itemSearch;
+  Timer? _searchDeadline;
+  DateTime? _lastSearchPass;
+
+  bool get isSearchingForItem => _itemSearch != null;
+
+  late SearchTarget _target;
+
+  void startItemSearch(SearchTarget target) {
+    reset();
+    _interpretation = Interpretation.object;
+    _target = target;
+    _itemSearch = ObjectTracker(passesToConfirm: 2, passesToForget: 1);
+    _searchDeadline = Timer(const Duration(seconds: 30), () {
+      stopItemSearch();
+      final message = _strings.itemNotSeen(target);
+      onResult(message);
+      unawaited(
+        AudioBus.instance.say(message, priority: SpeechPriority.answer),
+      );
+    });
+  }
+
+  bool stopItemSearch() {
+    final active = _itemSearch != null;
+    _itemSearch = null;
+    _searchDeadline?.cancel();
+    _searchDeadline = null;
+    _lastSearchPass = null;
+    return active;
+  }
+
+  Future<void> _searchFrame(CameraFrame frame, ObjectTracker search) async {
+    final quality = _sampler.sample(frame.image);
+    if (quality.isTooBlurry || quality.isTooDark) {
+      search.reset();
+      detectedObjects.value = const [];
+      return;
+    }
+    final rotation = rotationDegrees(
+      frame.description,
+      frame.deviceOrientation,
+    );
+    final jpeg = await cameraFrameToJpeg(frame, rotation);
+    if (!identical(search, _itemSearch)) return;
+    final candidates = await ObjectDetectService.instance.detect(
+      jpeg,
+      searchTarget: _target,
+    );
+    if (!identical(search, _itemSearch)) return;
+    detectedObjects.value = candidates;
+    final matches = search.update(candidates);
+    if (matches.isEmpty || AudioBus.instance.isMuted) return;
+    stopItemSearch();
+    final answer = objectDescription(
+      [matches.first.withColour(null)],
+      hindi: _language.isHindi,
+      includeDistance: false,
+    );
+    onResult(answer);
+    await AudioBus.instance.say(answer, priority: SpeechPriority.answer);
+  }
+
   /// Double-tap / "read now": ignore the change gate and the stability gate.
   void requestManualRead() {
+    stopItemSearch();
+    if (_interpretation == Interpretation.object) {
+      if (_requestedLook != null) return;
+      _requestedLook = ManualObjectScan();
+      _lookTimeout = Timer(const Duration(seconds: 4), () {
+        _endLook();
+        _sayObjectMiss();
+      });
+      return;
+    }
     _manualRequested = true;
+  }
+
+  void _endLook() {
+    _lookTimeout?.cancel();
+    _lookTimeout = null;
+    _requestedLook = null;
+  }
+
+  void _sayObjectMiss() {
+    final text = noObjectsMessage(hindi: _language.isHindi);
+    onResult(text);
+    unawaited(AudioBus.instance.say(text, priority: SpeechPriority.navigation));
   }
 
   /// The colour in the middle of the view, sampled from a fresh frame.
@@ -323,7 +405,9 @@ class FramePipeline {
 
   /// Invalidates in-flight work when the camera stops.
   void reset() {
+    stopItemSearch();
     _generation++;
+    _endLook();
     detectedObjects.value = const <DetectedObject>[];
     _sampler.reset();
     _stability.reset();
@@ -391,18 +475,49 @@ class FramePipeline {
       return;
     }
 
+    final search = _itemSearch;
+    if (search != null && _objectOnRequest == null) {
+      if (AudioBus.instance.isMuted ||
+          (_lastSearchPass != null &&
+              now.difference(_lastSearchPass!) <
+                  const Duration(milliseconds: 450))) {
+        return;
+      }
+      _lastSearchPass = now;
+      _busy = true;
+      try {
+        await _searchFrame(frame, search);
+      } catch (error) {
+        search.reset();
+        if (kDebugMode) debugPrint('Item search frame failed: $error');
+      } finally {
+        if (generation == _generation) _busy = false;
+      }
+      return;
+    }
+
     // A moving phone produces blurred frames. Text reading waits for the hand
     // to settle; object mode keeps scanning, because panning is how a blind
     // user searches for something. Banknote mode also waits for a steady
     // frame: blurred numerals are exactly what makes a note misread.
+    final quietObject =
+        _interpretation == Interpretation.object && !automaticDescriptions;
+    if (quietObject &&
+        !developerMode &&
+        _requestedLook == null &&
+        !_manualRequested &&
+        _objectOnRequest == null) {
+      return;
+    }
     final moving = MotionMonitor.instance.isMoving;
     if (moving &&
+        _requestedLook == null &&
         !_manualRequested &&
         !_banknoteManualPending &&
         _objectOnRequest == null) {
       // A long scan gets one "hold still" hint. A direct request does not:
       // the user is already waiting for an answer.
-      _noteMovement(now);
+      if (!quietObject) _noteMovement(now);
       if (_interpretation != Interpretation.object &&
           _interpretation != Interpretation.banknote) {
         return;
@@ -413,7 +528,10 @@ class FramePipeline {
 
     // Object mode: the camera feeds YOLO instead of the text recogniser.
     if (_interpretation == Interpretation.object || _objectOnRequest != null) {
-      final manual = _manualRequested || _objectOnRequest != null;
+      final sideQuestion = _objectOnRequest != null;
+      final look = sideQuestion ? null : _requestedLook;
+      if (look != null && !look.ready(now)) return;
+      final manual = look != null || sideQuestion;
       _manualRequested = false;
 
       // A sustained pan is a new view. Forget what the old view said so the
@@ -458,7 +576,22 @@ class FramePipeline {
 
       _busy = true;
       try {
-        await _detectObjects(frame, manual: manual, generation: generation);
+        await _detectObjects(
+          frame,
+          manual: manual,
+          generation: generation,
+          look: look,
+          capturedAt: now,
+        );
+      } catch (error) {
+        if (kDebugMode) debugPrint('Object scan failed: $error');
+        if (generation != _generation) return;
+        if (sideQuestion) {
+          _completeObjectRequest(null);
+        } else if (look != null && identical(_requestedLook, look)) {
+          _endLook();
+          _sayObjectMiss();
+        }
       } finally {
         if (generation == _generation) _busy = false;
       }
@@ -855,10 +988,36 @@ class FramePipeline {
     CameraFrame frame, {
     required bool manual,
     required int generation,
+    required ManualObjectScan? look,
+    required DateTime capturedAt,
   }) async {
     _lastObjectAt = DateTime.now();
     final side = _objectOnSide;
     final sideQuestion = _objectOnRequest != null && side != null;
+
+    if (!sideQuestion && _interpretation == Interpretation.object) {
+      final quality = _sampler.sample(frame.image);
+      // Keep the original request pending while automatic lighting settles.
+      if (quality.isTooDark && (waitingForTorch?.call() ?? false)) return;
+      // Dark paint can still have clear edges in a well-lit room.
+      if (quality.isTooBlurry ||
+          (quality.isTooDark && (isTorchOn?.call() ?? false))) {
+        detectedObjects.value = const [];
+        _lastObjects = const [];
+        _objectTracker.reset();
+        if (look != null) {
+          _endLook();
+          final hint = quality.isTooDark
+              ? _strings.objectTooDark(torchOn: isTorchOn?.call() ?? false)
+              : _strings.objectTooBlurry;
+          onResult(hint);
+          unawaited(
+            AudioBus.instance.say(hint, priority: SpeechPriority.navigation),
+          );
+        }
+        return;
+      }
+    }
 
     final rotation = rotationDegrees(
       frame.description,
@@ -866,10 +1025,7 @@ class FramePipeline {
     );
     final encodeWatch = Stopwatch()..start();
     final jpeg = await cameraFrameToJpeg(frame, rotation);
-    if (jpeg.isEmpty) {
-      if (sideQuestion) _completeObjectRequest(null);
-      return;
-    }
+    if (generation != _generation) return;
 
     final detectWatch = Stopwatch()..start();
     final detected = await ObjectDetectService.instance.detect(
@@ -878,7 +1034,9 @@ class FramePipeline {
       // pool is needed to find an object there before the list is trimmed.
       // A manual request is a scene question, so it gets a wider answer than
       // the live three-object narration.
-      maxObjects: sideQuestion ? 8 : (developerMode ? 15 : (manual ? 5 : 3)),
+      maxObjects: sideQuestion
+          ? 8
+          : (look != null ? 5 : (developerMode ? 15 : 3)),
       lenient: manual || developerMode || sideQuestion,
     );
     if (kDebugMode) {
@@ -890,21 +1048,35 @@ class FramePipeline {
       );
     }
     if (generation != _generation) {
-      if (sideQuestion) _completeObjectRequest(null);
       return;
     }
 
-    final confirmed = _objectTracker.update(
-      detected,
-      trustImmediately: manual || developerMode,
-    );
+    if (look != null && !identical(_requestedLook, look)) return;
+    if (look == null && !sideQuestion && _requestedLook != null) return;
+    final List<DetectedObject> confirmed;
+    if (look != null) {
+      final result = look.observe(capturedAt, detected);
+      if (result == null) return;
+      confirmed = result;
+      _endLook();
+    } else {
+      final candidates = developerMode || sideQuestion
+          ? detected
+                .where((item) => isConfidentDetection(item, lenient: false))
+                .toList()
+          : detected;
+      confirmed = _objectTracker.update(candidates);
+    }
     _lastObjects = confirmed;
     detectedObjects.value = developerMode ? detected : confirmed;
 
     if (sideQuestion) {
       DetectedObject? match;
       for (final object in detected) {
-        if (object.direction != side) continue;
+        if (object.direction != side ||
+            !isConfidentDetection(object, lenient: false)) {
+          continue;
+        }
         if (match == null || object.area > match.area) match = object;
       }
       _completeObjectRequest(match);
@@ -968,19 +1140,26 @@ class FramePipeline {
         !AudioBus.instance.hasReading &&
         !AudioBus.instance.speaking.value &&
         !AudioBus.instance.isMuted;
-    if (!manual && (!due || !canNarrate || !settled)) return;
+    if (!manual &&
+        (!automaticDescriptions || !due || !canNarrate || !settled)) {
+      return;
+    }
 
     // Three sentences is already a lot to listen to; more is noise. The whole
     // group is included, so a newly counted pair is said as a pair.
     final selected = manual
-        ? groups.entries.toList(growable: false)
+        ? groups.entries.take(1).toList(growable: false)
         : increased.take(3).toList(growable: false);
     final spoken = <DetectedObject>[
       for (final group in selected) ...group.value,
     ];
     if (spoken.isEmpty) return;
 
-    final message = objectDescription(spoken, hindi: hindi);
+    final message = objectDescription(
+      spoken,
+      hindi: hindi,
+      includeDistance: false,
+    );
     if (message.isEmpty) {
       // Hindi is frozen, so an object whose name was too close to call has no
       // Hindi sentence. Silence is right for automatic narration; a manual
@@ -1202,8 +1381,7 @@ class FramePipeline {
   /// the sentence but not the key, for the same reason: one flickering sample
   /// should not re-announce an object the user has already been told about.
   String _objectKey(DetectedObject object) {
-    final band = englishObjectDistancePhrase(object) ?? '?';
-    return '${object.label}|${object.direction.index}|$band';
+    return '${object.label}|${object.direction.index}';
   }
 
   /// Makes sure the voice matches the script being read.

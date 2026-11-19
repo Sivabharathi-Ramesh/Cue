@@ -93,6 +93,39 @@ void main() {
       expect(reading!.colour, ObjectColour.red);
     });
 
+    test(
+      'brown centre wins over the green background; mixed centre is uncertain',
+      () {
+        const size = 40;
+        final data = solid(size, 30, 170, 40);
+        for (var y = 10; y < 30; y++) {
+          for (var x = 10; x < 30; x++) {
+            data.setRange((y * size + x) * 4, (y * size + x) * 4 + 4, [
+              110,
+              70,
+              25,
+              255,
+            ]);
+          }
+        }
+        expect(
+          dominantColourInBox(data, size, size, box)?.colour,
+          ObjectColour.brown,
+        );
+        for (var y = 0; y < size; y++) {
+          for (var x = 20; x < size; x++) {
+            data.setRange((y * size + x) * 4, (y * size + x) * 4 + 4, [
+              30,
+              170,
+              40,
+              255,
+            ]);
+          }
+        }
+        expect(dominantColourInBox(data, size, size, box), isNull);
+      },
+    );
+
     test('a box entirely outside the image returns nothing', () {
       final reading = dominantColourInBox(
         solid(32, 200, 30, 30),

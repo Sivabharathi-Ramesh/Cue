@@ -65,13 +65,12 @@ void main() {
     test('forward follows the specification order and wraps', () {
       expect(Interpretation.text.next, Interpretation.object);
       expect(Interpretation.object.next, Interpretation.banknote);
-      expect(Interpretation.banknote.next, Interpretation.screen);
+      expect(Interpretation.banknote.next, Interpretation.text);
       expect(Interpretation.screen.next, Interpretation.text);
     });
 
     test('backward is the exact reverse', () {
-      expect(Interpretation.text.previous, Interpretation.screen);
-      expect(Interpretation.screen.previous, Interpretation.banknote);
+      expect(Interpretation.text.previous, Interpretation.banknote);
       expect(Interpretation.banknote.previous, Interpretation.object);
       expect(Interpretation.object.previous, Interpretation.text);
     });

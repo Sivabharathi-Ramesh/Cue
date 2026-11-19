@@ -18,6 +18,7 @@ import '../core/keep_awake.dart';
 import '../core/location_service.dart';
 import '../core/motion_monitor.dart';
 import '../core/spoken_facts.dart';
+import '../core/search_target.dart';
 import '../core/tts_service.dart';
 import '../core/voice_command.dart';
 import '../core/voice_command_service.dart';
@@ -27,7 +28,9 @@ import '../vision/ocr_service.dart';
 import '../vision/object_detect_service.dart';
 import '../vision/detected_object.dart';
 import '../core/object_labels.dart';
+import '../core/object_preferences.dart';
 import 'frame_pipeline.dart';
+import 'frame_metrics.dart';
 import 'object_box_painter.dart';
 import 'scene_router.dart';
 
@@ -99,9 +102,14 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
 
   StreamSubscription<double>? _lightSubscription;
   StreamSubscription<bool>? _proximitySubscription;
+  final _lightingSampler = FrameSampler();
+  DateTime? _lastLightingFrame;
+  double? _ambientLux;
+  bool _sensorCovered = false;
+  bool _manualTorchOff = false;
+  bool _waitingForTorch = false;
   DateTime? _darkSince;
   DateTime? _brightSince;
-  DateTime _lastLightDiagAt = DateTime.fromMillisecondsSinceEpoch(0);
   bool _torchOn = false;
   bool _torchAnnounced = false;
   DateTime? _torchOnSince;
@@ -157,7 +165,12 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     final language = LanguageService.instance.language.value;
-    _pipeline = FramePipeline(onResult: _onResult, language: language);
+    _pipeline = FramePipeline(
+      onResult: _onResult,
+      language: language,
+      waitingForTorch: () => _waitingForTorch,
+      isTorchOn: () => _source.controller?.value.flashMode == FlashMode.torch,
+    )..automaticDescriptions = ObjectPreferences.instance.automatic;
     unawaited(Feedback.instance.init());
     _keyChannel.setMethodCallHandler(_onHardwareKey);
     unawaited(_startSensors());
@@ -169,6 +182,7 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
     _searchTick = Timer.periodic(const Duration(seconds: 2), (_) {
       if (!mounted) return;
       if (_phase == LivePhase.searching &&
+          _pipeline.interpretation != Interpretation.object &&
           _lastResult.isEmpty &&
           !_listening &&
           !AudioBus.instance.speaking.value) {
@@ -179,6 +193,7 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
 
   @override
   void dispose() {
+    _pipeline.reset();
     _searchTick?.cancel();
     _previewTimer?.cancel();
     _lightSubscription?.cancel();
@@ -229,12 +244,13 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
   /// and the native listeners are restarted by [DeviceSensors.start].
   Future<void> _startSensors() async {
     await MotionMonitor.instance.start();
-    await DeviceSensors.instance.start();
 
     _lightSubscription ??= DeviceSensors.instance.light.listen(_onLight);
     _proximitySubscription ??= DeviceSensors.instance.proximityNear.listen(
       _onProximity,
     );
+
+    await DeviceSensors.instance.start();
 
     if (kDebugMode) {
       final depth = await DeviceSensors.instance.depthAvailable();
@@ -247,11 +263,18 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
   /// Applies a torch request spoken as a voice command.
   Future<void> _torchFromVoice(bool on) async {
     _torchTimedOut = false;
+    _manualTorchOff = !on;
+    if (!on) _waitingForTorch = false;
     await _setTorch(on);
     if (!mounted) return;
     unawaited(
       AudioBus.instance.say(
-        on ? _strings.torchTurnedOn : _strings.torchTurnedOff,
+        _source.controller == null ||
+                (_source.controller!.value.flashMode == FlashMode.torch) != on
+            ? _strings.torchUnavailable
+            : on
+            ? _strings.torchTurnedOn
+            : _strings.torchTurnedOff,
         priority: SpeechPriority.navigation,
       ),
     );
@@ -363,7 +386,11 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
 
     final description = object == null
         ? nothingOnSide(side, hindi: hindi)
-        : objectDescription(<DetectedObject>[object], hindi: hindi);
+        : objectDescription(
+            <DetectedObject>[object],
+            hindi: hindi,
+            includeDistance: false,
+          );
     // Hindi is frozen and has no generic label for an ambiguous object, so a
     // description can come back empty. The existing "unrecognised object" line
     // is honest and needs no new string.
@@ -381,6 +408,7 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
   /// It must not guess at an action: the point of the phrase is that the user
   /// withdrew the request.
   Future<void> _handleNeverMind() async {
+    _pipeline.stopItemSearch();
     await AudioBus.instance.stop();
     await AudioBus.instance.say(
       _strings.neverMind,
@@ -503,20 +531,26 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
     await LocationService.instance.openLocationSettings();
   }
 
-  /// Turns the torch on in a dark room and off again in daylight.
-  ///
-  /// The camera can only report brightness after a frame; the light sensor
-  /// knows before the first frame, and does not care what the camera is
-  /// pointed at.
   void _onLight(double lux) {
-    if (!mounted || _phase != LivePhase.searching) return;
-    final now = DateTime.now();
-    if (kDebugMode &&
-        now.difference(_lastLightDiagAt) > const Duration(seconds: 3)) {
-      _lastLightDiagAt = now;
-      debugPrint('live: light ${lux.toStringAsFixed(1)} lux torch=$_torchOn');
-    }
+    if (lux.isFinite && lux >= 0) _ambientLux = lux;
+  }
 
+  void _onCameraFrame(CameraFrame frame) {
+    final now = DateTime.now();
+    if (mounted &&
+        _phase == LivePhase.searching &&
+        (_lastLightingFrame == null ||
+            now.difference(_lastLightingFrame!) >=
+                const Duration(milliseconds: 300))) {
+      _lastLightingFrame = now;
+      _updateLighting(frame, now);
+    }
+    _pipeline.handleFrame(frame);
+  }
+
+  void _updateLighting(CameraFrame frame, DateTime now) {
+    final lux = _ambientLux;
+    _waitingForTorch = false;
     if (_torchOn &&
         _torchOnSince != null &&
         now.difference(_torchOnSince!) >= _torchMaxOn) {
@@ -525,12 +559,23 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
       return;
     }
 
+    if (lux == null || _sensorCovered) {
+      _darkSince = null;
+      _brightSince = null;
+      return;
+    }
     if (lux < _darkLux) {
       _brightSince = null;
+      if (_torchOn ||
+          _torchTimedOut ||
+          _manualTorchOff ||
+          !_lightingSampler.sample(frame.image).isTooDark) {
+        _darkSince = null;
+        return;
+      }
+      _waitingForTorch = true;
       _darkSince ??= now;
-      if (!_torchOn &&
-          !_torchTimedOut &&
-          now.difference(_darkSince!) >= _darkDelay) {
+      if (now.difference(_darkSince!) >= _darkDelay) {
         unawaited(_setTorch(true, announce: !_torchAnnounced));
       }
       return;
@@ -552,6 +597,7 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
 
   /// Silences Cue while the phone is covered, and reopens its voice after.
   void _onProximity(bool near) {
+    _sensorCovered = near;
     if (!mounted || _listening) return;
     if (kDebugMode) {
       debugPrint('live: proximity near=$near');
@@ -574,6 +620,11 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
     await _source.setTorch(on);
     if (!mounted) return;
 
+    _torchOn = _source.controller?.value.flashMode == FlashMode.torch;
+    if (_torchOn != on) {
+      if (on) _torchTimedOut = true;
+      return;
+    }
     if (!on) {
       _torchAnnounced = false;
       if (autoOff) {
@@ -645,7 +696,7 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
       });
     }
 
-    final startError = await _source.start(onFrame: _pipeline.handleFrame);
+    final startError = await _source.start(onFrame: _onCameraFrame);
 
     if (!mounted || token != _startToken) {
       _starting = false;
@@ -798,6 +849,8 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
     _torchAnnounced = false;
     _torchOnSince = null;
     _torchTimedOut = false;
+    _waitingForTorch = false;
+    _lastLightingFrame = null;
     _darkSince = null;
     _brightSince = null;
     _pipeline.reset();
@@ -862,7 +915,57 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
     unawaited(AudioBus.instance.repeatLast());
   }
 
+  Future<void> _chooseItem() async {
+    final target = await showDialog<SearchTarget>(
+      context: context,
+      builder: (context) => SimpleDialog(
+        title: Text(_strings.findItem),
+        children: [
+          for (final item in SearchTarget.values)
+            SimpleDialogOption(
+              onPressed: () => Navigator.pop(context, item),
+              child: Text(_language.isHindi ? item.hindi : item.english),
+            ),
+        ],
+      ),
+    );
+    if (mounted && target != null) _findItem(target);
+  }
+
+  void _findItem(SearchTarget target) {
+    if (_phase != LivePhase.searching) {
+      unawaited(
+        AudioBus.instance.say(
+          _strings.retryHint,
+          priority: SpeechPriority.navigation,
+        ),
+      );
+      return;
+    }
+    setState(() {
+      _pipeline.startItemSearch(target);
+      _lastResult = '';
+    });
+    _showPreview();
+    unawaited(
+      AudioBus.instance.say(
+        _strings.searchingItem(target),
+        priority: SpeechPriority.navigation,
+      ),
+    );
+  }
+
   void _stopSpeech() {
+    if (_pipeline.stopItemSearch()) {
+      setState(() => _lastResult = _strings.searchStopped);
+      unawaited(
+        AudioBus.instance.say(
+          _strings.searchStopped,
+          priority: SpeechPriority.answer,
+        ),
+      );
+      return;
+    }
     unawaited(Feedback.instance.gesture());
     unawaited(AudioBus.instance.stop());
   }
@@ -870,7 +973,12 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
   void _help() {
     unawaited(Feedback.instance.gesture());
     unawaited(
-      AudioBus.instance.say(_strings.help, priority: SpeechPriority.navigation),
+      AudioBus.instance.say(
+        _pipeline.interpretation == Interpretation.object
+            ? _strings.objectHelp
+            : _strings.help,
+        priority: SpeechPriority.navigation,
+      ),
     );
   }
 
@@ -933,7 +1041,15 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
     unawaited(Feedback.instance.gesture());
     await AudioBus.instance.stop();
 
-    _pipeline.setInterpretation(next);
+    if (!next.isBuilt) {
+      await AudioBus.instance.say(
+        _strings.notBuilt(_strings.modeName(next.label)),
+        priority: SpeechPriority.navigation,
+      );
+      return;
+    }
+    if (!mounted) return;
+    setState(() => _pipeline.setInterpretation(next));
     AudioBus.instance.forgetLastResult();
     _showPreview();
 
@@ -943,17 +1059,31 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
       debugPrint('live: interpretation ${next.name}');
     }
 
-    final announcement = switch (next) {
-      Interpretation.text => _strings.textModeAnnouncement,
-      Interpretation.object => _strings.objectModeAnnouncement,
-      Interpretation.banknote => _strings.banknoteModeAnnouncement,
-      Interpretation.screen => _strings.notBuilt(
-        _strings.modeName(next.label),
-      ),
-    };
+    final firstVisit = ObjectPreferences.instance.firstVisit(next.name);
+    final announcement = !firstVisit
+        ? '${_strings.modeName(next.label)} ${_language.isHindi ? 'मोड।' : 'mode.'}'
+        : switch (next) {
+            Interpretation.text => _strings.textModeAnnouncement,
+            Interpretation.object => _strings.objectModeAnnouncement,
+            Interpretation.banknote => _strings.banknoteModeAnnouncement,
+            Interpretation.screen => _strings.notBuilt(
+              _strings.modeName(next.label),
+            ),
+          };
     await AudioBus.instance.say(
       announcement,
       priority: SpeechPriority.navigation,
+    );
+  }
+
+  void _setAutoDescriptions(bool enabled) {
+    ObjectPreferences.instance.setAutomatic(enabled);
+    setState(() => _pipeline.automaticDescriptions = enabled);
+    unawaited(
+      AudioBus.instance.say(
+        _strings.autoDescriptions(enabled),
+        priority: SpeechPriority.navigation,
+      ),
     );
   }
 
@@ -1252,10 +1382,20 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
         unawaited(_changeSpeed(faster: true));
       case VoiceCommand.textMode:
         unawaited(_setInterpretation(Interpretation.text));
+      case VoiceCommand.findKeys:
+      case VoiceCommand.findPhone:
+      case VoiceCommand.findGlasses:
+      case VoiceCommand.findPen:
+      case VoiceCommand.findBottle:
+        _findItem(result.command.target!);
       case VoiceCommand.objectMode:
         unawaited(_setInterpretation(Interpretation.object));
       case VoiceCommand.banknoteMode:
         unawaited(_setInterpretation(Interpretation.banknote));
+      case VoiceCommand.autoDescriptionsOn:
+        _setAutoDescriptions(true);
+      case VoiceCommand.autoDescriptionsOff:
+        _setAutoDescriptions(false);
       case VoiceCommand.screenMode:
         unawaited(_setInterpretation(Interpretation.screen));
       case VoiceCommand.torchOn:
@@ -1503,13 +1643,38 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
 
     return Scaffold(
       backgroundColor: Colors.black,
+      floatingActionButton: _phase == LivePhase.searching &&
+              _pipeline.interpretation == Interpretation.object
+          ? Padding(
+              padding: const EdgeInsets.only(bottom: 72),
+              child: FloatingActionButton.extended(
+                onPressed: _pipeline.isSearchingForItem ? _stopSpeech : _chooseItem,
+                icon: Icon(_pipeline.isSearchingForItem ? Icons.stop : Icons.search),
+                label: Text(_pipeline.isSearchingForItem ? _strings.stopSearch : _strings.findItem),
+              ),
+            )
+          : null,
       body: Semantics(
         container: true,
         label: _semanticsLabel,
-        hint: _strings.semanticsHint,
+        hint: _pipeline.interpretation == Interpretation.object
+            ? _strings.objectTapHint
+            : _strings.semanticsHint,
         onTap: _activate,
         customSemanticsActions: <CustomSemanticsAction, VoidCallback>{
-          CustomSemanticsAction(label: _strings.actionReadNow): _activate,
+          CustomSemanticsAction(
+            label: _pipeline.interpretation == Interpretation.object
+                ? _strings.describeNow
+                : _strings.actionReadNow,
+          ): _activate,
+          if (_pipeline.interpretation == Interpretation.object)
+            CustomSemanticsAction(
+              label: _strings.autoDescriptions(
+                !_pipeline.automaticDescriptions,
+              ),
+            ): () =>
+                _setAutoDescriptions(!_pipeline.automaticDescriptions),
+          CustomSemanticsAction(label: _strings.findItem): _chooseItem,
           CustomSemanticsAction(label: _strings.actionRepeat): _repeat,
           CustomSemanticsAction(label: _strings.actionStop): _stopSpeech,
           CustomSemanticsAction(label: _strings.actionPauseResume):
@@ -1660,7 +1825,7 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
                         ),
                       ),
                       child: Text(
-                        '${objects.length} OBJECT${objects.length == 1 ? '' : 'S'}',
+                        '${objects.length} LIVE CANDIDATE${objects.length == 1 ? '' : 'S'}',
                         style: const TextStyle(
                           color: Color(0xFF00E676),
                           fontWeight: FontWeight.bold,
@@ -1805,10 +1970,13 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
                 style: const TextStyle(color: Colors.white, fontSize: 20),
               ),
             ],
-            if (_lastResult.isNotEmpty) ...<Widget>[
+            if (!_listening && _lastResult.isNotEmpty) ...<Widget>[
               const SizedBox(height: 18),
               Text(
-                _lastResult,
+                _developerMode &&
+                        _pipeline.interpretation == Interpretation.object
+                    ? _strings.lastScan(_lastResult)
+                    : _lastResult,
                 maxLines: 5,
                 overflow: TextOverflow.ellipsis,
                 textAlign: TextAlign.center,

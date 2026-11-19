@@ -1,4 +1,5 @@
 import 'cue_language.dart';
+import 'search_target.dart';
 
 /// The words Cue speaks and shows.
 ///
@@ -15,9 +16,7 @@ class CueStrings {
 
   // --- Starting and status --------------------------------------------------
 
-  String get looking => _hi
-      ? 'क्यू देख रहा है।'
-      : 'Cue is looking.';
+  String get looking => _hi ? 'क्यू देख रहा है।' : 'Cue is looking.';
 
   String get lookingIntro => _hi
       ? 'क्यू देख रहा है। बोलने के लिए वॉल्यूम डाउन दबाए रखें, या मदद कहें।'
@@ -82,8 +81,8 @@ class CueStrings {
   String get readingNow => _hi ? 'पढ़ रहा हूँ।' : 'Reading now.';
 
   String get help => _hi
-      ? 'नियंत्रण। बोलने के लिए वॉल्यूम डाउन दबाए रखें। कमांड: पढ़ो, रुको, दोहराओ, ठहरो, जारी रखो, अगला, पिछला, शुरू से, धीरे, तेज़, समय, तारीख, लोकेशन, और मोड: पाठ, वस्तु, रंग। अभी पढ़ने के लिए दो बार टैप करें।'
-      : 'Controls. Hold volume down to speak. Commands: read, stop, repeat, pause, resume, next, back, start over, slower, faster, time, date, location, and modes: text, object, colour. Double tap to read now.';
+      ? 'नियंत्रण। बोलने के लिए वॉल्यूम डाउन दबाए रखें। कमांड: पढ़ो, रुको, दोहराओ, ठहरो, जारी रखो, अगला, पिछला, शुरू से, धीरे, तेज़, समय, तारीख, लोकेशन, और मोड: पाठ, वस्तु, नोट। अभी पढ़ने के लिए दो बार टैप करें।'
+      : 'Controls. Hold volume down to speak. Commands: read, stop, repeat, pause, resume, next, back, start over, slower, faster, time, date, location, and modes: text, object, banknote. Double tap to read now.';
 
   String get helpHowTo => _hi
       ? 'बोलने के लिए वॉल्यूम डाउन दबाए रखें।'
@@ -108,23 +107,15 @@ class CueStrings {
       ? 'नमस्ते। पढ़ने के लिए वॉल्यूम डाउन दबाए रखकर पढ़ो कहें।'
       : 'Hello. Hold volume down and say read when you want me to read.';
 
-  String get fastest =>
-      _hi ? 'सबसे तेज़ गति।' : 'Fastest speed.';
+  String get fastest => _hi ? 'सबसे तेज़ गति।' : 'Fastest speed.';
 
-  String get slowest =>
-      _hi ? 'सबसे धीमी गति।' : 'Slowest speed.';
+  String get slowest => _hi ? 'सबसे धीमी गति।' : 'Slowest speed.';
 
-  String get fasterConfirmation => _hi
-      ? 'तेज़ गति।'
-      : 'Faster.';
+  String get fasterConfirmation => _hi ? 'तेज़ गति।' : 'Faster.';
 
-  String get slowerConfirmation => _hi
-      ? 'धीमी गति।'
-      : 'Slower.';
+  String get slowerConfirmation => _hi ? 'धीमी गति।' : 'Slower.';
 
-  String get previewShown => _hi
-      ? 'पूर्वावलोकन दिखाया गया।'
-      : 'Preview shown.';
+  String get previewShown => _hi ? 'पूर्वावलोकन दिखाया गया।' : 'Preview shown.';
 
   String get alreadyPaused => _hi ? 'पहले से रुका हुआ है।' : 'Already paused.';
 
@@ -158,17 +149,13 @@ class CueStrings {
   String get alreadyRunning =>
       _hi ? 'क्यू पहले से चल रहा है।' : 'Already running.';
 
-  String get readingPaused => _hi
-      ? 'पढ़ना रुका।'
-      : 'Reading paused.';
+  String get readingPaused => _hi ? 'पढ़ना रुका।' : 'Reading paused.';
 
   // --- Navigation -----------------------------------------------------------
 
-  String get endOfPage =>
-      _hi ? 'पेज का अंत।' : 'End of page.';
+  String get endOfPage => _hi ? 'पेज का अंत।' : 'End of page.';
 
-  String get startOfPage =>
-      _hi ? 'पेज की शुरुआत।' : 'Start of page.';
+  String get startOfPage => _hi ? 'पेज की शुरुआत।' : 'Start of page.';
 
   String get nothingToRead => _hi
       ? 'अभी पढ़ने के लिए कुछ नहीं है। पढ़ो कहें।'
@@ -179,17 +166,14 @@ class CueStrings {
 
   // --- Reading honestly -----------------------------------------------------
 
-  String get notSureNoText => _hi
-      ? 'पाठ नहीं दिख रहा। स्थिर रखें।'
-      : 'No text visible. Hold steady.';
+  String get notSureNoText =>
+      _hi ? 'पाठ नहीं दिख रहा। स्थिर रखें।' : 'No text visible. Hold steady.';
 
-  String get marksNotReadable => _hi
-      ? 'पाठ पढ़ा नहीं जा रहा।'
-      : 'Unreadable text.';
+  String get marksNotReadable =>
+      _hi ? 'पाठ पढ़ा नहीं जा रहा।' : 'Unreadable text.';
 
-  String get somethingThere => _hi
-      ? 'पहचान नहीं पाया।'
-      : 'Unrecognised object.';
+  String get somethingThere =>
+      _hi ? 'पहचान नहीं पाया।' : 'Unrecognised object.';
 
   // --- Language -------------------------------------------------------------
 
@@ -248,8 +232,8 @@ class CueStrings {
   // --- Modes ----------------------------------------------------------------
 
   String get objectModeAnnouncement => _hi
-      ? 'वस्तु मोड।'
-      : 'Object mode. Point the camera at an object.';
+      ? 'वस्तु मोड। सामने की चीज़ों का विवरण सुनने के लिए दो बार टैप करें।'
+      : 'Object mode. Double tap to describe what’s in view.';
 
   /// Banknote mode is built for English first.
   ///
@@ -282,9 +266,7 @@ class CueStrings {
       ? somethingThere
       : 'More than one note value is in view. Show one note at a time.';
 
-  String get textModeAnnouncement => _hi
-      ? 'पाठ मोड।'
-      : 'Text mode.';
+  String get textModeAnnouncement => _hi ? 'पाठ मोड।' : 'Text mode.';
 
   String modeName(String englishLabel) {
     if (!_hi) return englishLabel;
@@ -328,6 +310,50 @@ class CueStrings {
 
   String get actionReadNow => _hi ? 'अभी पढ़ो' : 'Read now';
 
+  String get objectTapHint => _hi
+      ? 'विवरण सुनने के लिए दो बार टैप करें।'
+      : 'Double tap for a description.';
+
+  String objectTooDark({required bool torchOn}) {
+    if (torchOn) {
+      return _hi
+          ? 'टॉर्च चालू है। फिर भी वस्तु साफ़ नहीं दिख रही।'
+          : 'Torch is on. I still can’t identify the object.';
+    }
+    return _hi
+        ? 'इस दृश्य में वस्तु साफ़ नहीं दिख रही।'
+        : 'I can’t identify the object clearly in this view.';
+  }
+
+  String get torchUnavailable =>
+      _hi ? 'टॉर्च बदल नहीं सका।' : 'I couldn’t change the torch.';
+
+  String get objectTooBlurry => _hi
+      ? 'तस्वीर साफ़ नहीं है। फ़ोन स्थिर रखकर फिर कोशिश करें।'
+      : 'The view is unclear. Hold still and try again.';
+  String lastScan(String text) =>
+      _hi ? 'पिछला जवाब: $text' : 'Last answer: $text';
+
+  String get findItem => _hi ? 'चीज़ खोजें' : 'Find an item';
+  String searchingItem(SearchTarget item) => _hi
+      ? '${item.hindi} की तलाश शुरू। फ़ोन धीरे-धीरे घुमाएँ।'
+      : 'Looking for your ${item.english.toLowerCase()}. Sweep the phone slowly.';
+  String itemNotSeen(SearchTarget item) => _hi
+      ? 'खोज पूरी हुई। ${item.hindi} का पता नहीं चला।'
+      : 'Search finished. I couldn’t spot your ${item.english.toLowerCase()}.';
+  String get stopSearch => _hi ? 'खोज बंद करें' : 'Stop search';
+  String get searchStopped => _hi ? 'खोज बंद।' : 'Search stopped.';
+
+  String get objectHelp => _hi
+      ? 'विवरण सुनने के लिए दो बार टैप करें। खोजने के लिए चीज़ खोजें चुनें। आवाज़ से ऑटो विवरण चालू या ऑटो विवरण बंद कहें। मोड बदलने के लिए दाएँ या बाएँ स्वाइप करें।'
+      : 'Double tap for a description. Choose Find an item to start a search. Hold volume down and say automatic descriptions on or automatic descriptions off. Swipe sideways to change mode.';
+
+  String autoDescriptions(bool enabled) => _hi
+      ? (enabled ? 'ऑटो विवरण चालू' : 'ऑटो विवरण बंद')
+      : (enabled ? 'Automatic descriptions on' : 'Automatic descriptions off');
+
+  String get describeNow => _hi ? 'विवरण सुनें' : 'Describe now';
+
   String get actionRepeat => _hi ? 'पिछला दोहराओ' : 'Repeat last result';
 
   String get actionStop => _hi ? 'बोलना बंद करो' : 'Stop speaking';
@@ -344,7 +370,7 @@ class CueStrings {
 
   String get actionSpeakCommand => _hi ? 'कमांड बोलो' : 'Speak a command';
 
-  String get actionChangeMode => _hi ? 'मोड बदलो' : 'Change interpretation';
+  String get actionChangeMode => _hi ? 'मोड बदलो' : 'Change mode';
 
   String get actionNext => _hi ? 'अगला वाक्य' : 'Next sentence';
 
