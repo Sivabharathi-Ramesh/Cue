@@ -101,7 +101,11 @@ VoiceCommand parseVoiceCommand(String transcript) {
         if (target == SearchTarget.keys) 'key',
       };
       for (final name in names) {
-        if (has('find my $name') || has('find the $name') || has('find $name')) {
+        if (has('find my $name') ||
+            has('find the $name') ||
+            has('find a $name') ||
+            has('find an $name') ||
+            has('find $name')) {
           return command;
         }
       }

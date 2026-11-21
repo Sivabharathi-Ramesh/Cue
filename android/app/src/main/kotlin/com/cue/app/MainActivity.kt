@@ -76,6 +76,7 @@ class MainActivity : FlutterActivity() {
      * back as a JPEG the detector can decode.
      */
     private val imageExecutor = Executors.newSingleThreadExecutor()
+    private var personalItemEmbedder: PersonalItemEmbedder? = null
 
     /// Location lookups block on the GPS/network provider, so they never run on
     /// the UI thread.
@@ -216,6 +217,36 @@ class MainActivity : FlutterActivity() {
                 }
             }
 
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "cue/personal_items")
+            .setMethodCallHandler { call, result ->
+                if (call.method == "profileDirectory") {
+                    result.success(noBackupFilesDir.absolutePath)
+                    return@setMethodCallHandler
+                }
+                if (call.method != "describe") {
+                    result.notImplemented()
+                    return@setMethodCallHandler
+                }
+                val jpeg = call.argument<ByteArray>("jpeg")
+                val regions = call.argument<List<List<Double>>>("regions")
+                if (jpeg == null || regions.isNullOrEmpty()) {
+                    result.error("invalid_image", "A frame and its regions are required", null)
+                    return@setMethodCallHandler
+                }
+                imageExecutor.execute {
+                    try {
+                        val embedder = personalItemEmbedder
+                            ?: PersonalItemEmbedder(assets).also { personalItemEmbedder = it }
+                        val vectors = embedder.describe(jpeg, regions)
+                        runOnUiThread {
+                            result.success(mapOf("format" to PersonalItemEmbedder.FORMAT, "vectors" to vectors))
+                        }
+                    } catch (error: Exception) {
+                        runOnUiThread { result.error("personal_vision", error.message, null) }
+                    }
+                }
+            }
+
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, imageChannelName)
             .setMethodCallHandler { call, result ->
                 when (call.method) {
@@ -227,6 +258,7 @@ class MainActivity : FlutterActivity() {
                         val rotation = call.argument<Int>("rotation") ?: 0
                         val maxSide = call.argument<Int>("maxSide") ?: 640
                         val quality = call.argument<Int>("quality") ?: 82
+                        val crop = call.argument<List<Int>>("crop")
 
                         if (bytes == null || width <= 0 || height <= 0 ||
                             rowStride < width
@@ -244,7 +276,8 @@ class MainActivity : FlutterActivity() {
                                     rowStride,
                                     rotation,
                                     maxSide,
-                                    quality
+                                    quality,
+                                    crop?.let { Rect(it[0], it[1], it[2], it[3]) }
                                 )
                                 runOnUiThread { result.success(jpeg) }
                             } catch (error: Throwable) {
@@ -277,7 +310,8 @@ class MainActivity : FlutterActivity() {
         rowStride: Int,
         rotation: Int,
         maxSide: Int,
-        quality: Int
+        quality: Int,
+        crop: Rect?
     ): ByteArray {
         val ySize = rowStride * height
         val uvRows = (height + 1) / 2
@@ -311,9 +345,10 @@ class MainActivity : FlutterActivity() {
         val bitmap = BitmapFactory.decodeByteArray(raw, 0, raw.size)
             ?: throw IllegalStateException("Could not decode the camera frame")
 
+        val bounds = crop ?: Rect(0, 0, bitmap.width, bitmap.height)
         val matrix = Matrix()
         if (rotation % 360 != 0) matrix.postRotate(rotation.toFloat())
-        val longSide = maxOf(bitmap.width, bitmap.height)
+        val longSide = maxOf(bounds.width(), bounds.height())
         val scale = if (maxSide > 0 && longSide > maxSide) {
             maxSide.toFloat() / longSide
         } else {
@@ -321,10 +356,12 @@ class MainActivity : FlutterActivity() {
         }
         if (scale < 1f) matrix.postScale(scale, scale)
 
-        val upright = if (rotation % 360 == 0 && scale >= 1f) {
+        val upright = if (crop == null && rotation % 360 == 0 && scale >= 1f) {
             bitmap
         } else {
-            Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
+            Bitmap.createBitmap(
+                bitmap, bounds.left, bounds.top, bounds.width(), bounds.height(), matrix, true
+            )
         }
 
         val output = ByteArrayOutputStream()
@@ -335,6 +372,7 @@ class MainActivity : FlutterActivity() {
     }
 
     override fun onDestroy() {
+        imageExecutor.execute { personalItemEmbedder?.close() }
         imageExecutor.shutdown()
         super.onDestroy()
     }

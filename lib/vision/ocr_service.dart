@@ -38,6 +38,9 @@ class OcrService {
   TextRecognizer? _latin;
   TextRecognizer? _devanagari;
 
+  /// Scripts whose model has been loaded successfully in this session.
+  final Set<CueLanguage> _warmed = <CueLanguage>{};
+
   /// ML Kit holds one native recogniser. Warm-up, the Read screen and the
   /// live pipeline must not call it at the same time, so every operation is
   /// queued behind the previous one.
@@ -69,7 +72,12 @@ class OcrService {
   /// The first call into ML Kit can take several seconds while the model is
   /// loaded. Doing it once when a camera screen opens hides that behind
   /// aiming the camera, instead of making the first reading feel frozen.
+  ///
+  /// The model load is a main-thread stall (Dynamite and the native pipeline
+  /// are created synchronously), so it is done once per script and never
+  /// before the camera is open: doing it first delayed the camera by seconds.
   Future<void> warmUp([CueLanguage language = CueLanguage.english]) {
+    if (_warmed.contains(language)) return Future<void>.value();
     return _serialise(() async {
       final recognizer = _recognizerFor(language);
 
@@ -102,6 +110,7 @@ class OcrService {
             ),
           ),
         );
+        _warmed.add(language);
       } catch (_) {
         // Warming up is an optimisation. If it fails, the real call still runs.
       }

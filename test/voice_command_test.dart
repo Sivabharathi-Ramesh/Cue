@@ -4,6 +4,8 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   test('find an everyday item in English and Hindi', () {
     expect(parseVoiceCommand('find my keys'), VoiceCommand.findKeys);
+    expect(parseVoiceCommand('find a key'), VoiceCommand.findKeys);
+    expect(parseVoiceCommand('find a pen'), VoiceCommand.findPen);
     expect(parseVoiceCommand('find my phone'), VoiceCommand.findPhone);
     expect(parseVoiceCommand('चश्मा ढूंढो'), VoiceCommand.findGlasses);
     expect(parseVoiceCommand('कलम खोजो'), VoiceCommand.findPen);

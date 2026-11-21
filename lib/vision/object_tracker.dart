@@ -82,6 +82,7 @@ class ObjectTracker {
   List<DetectedObject> update(
     List<DetectedObject> seen, {
     bool trustImmediately = false,
+    bool requireCurrentDetection = false,
   }) {
     final detections = _mergeDuplicates(seen);
     final observed = <int>{};
@@ -122,11 +123,11 @@ class ObjectTracker {
     final confirmed = <DetectedObject>[];
     for (final track in _tracks.values) {
       final needed = trustImmediately ? 1 : passesToConfirm;
-      // A manual answer is about the frame the user just asked about, so an
-      // object that survived only because it is being bridged through a miss
-      // is not part of the answer. Including it would let a stale position
-      // sit beside the object's real one and produce "two chairs" for one.
-      if (trustImmediately && !observed.contains(track.id)) continue;
+      // A direct answer needs a position from a frame that saw the object.
+      if ((trustImmediately || requireCurrentDetection) &&
+          !observed.contains(track.id)) {
+        continue;
+      }
       if (track.hits < needed) continue;
       confirmed.add(track.object);
     }

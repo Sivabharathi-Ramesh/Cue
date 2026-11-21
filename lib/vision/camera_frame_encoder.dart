@@ -13,10 +13,13 @@ const MethodChannel _imageChannel = MethodChannel('cue/image');
 /// produces an upright, downscaled picture in a few milliseconds. Encoding the
 /// same frame in Dart took seconds and made live object narration impossible.
 /// iOS has no equivalent channel here, so it uses the Dart path.
+/// [region], when supplied, is a normalized rectangle in the upright view.
+/// It is cropped at camera resolution before the image is reduced for YOLO.
 Future<Uint8List> cameraFrameToJpeg(
   CameraFrame frame,
-  int rotationDegrees,
-) async {
+  int rotationDegrees, {
+  Rect? region,
+}) async {
   final image = frame.image;
   if (image.planes.isEmpty || image.width <= 0 || image.height <= 0) {
     return Uint8List(0);
@@ -26,6 +29,9 @@ Future<Uint8List> cameraFrameToJpeg(
   final height = image.height;
   final planes = image.planes;
   final rowStride = planes.first.bytesPerRow;
+  final crop = region == null
+      ? null
+      : _sensorCrop(region, width, height, rotationDegrees);
 
   if (defaultTargetPlatform == TargetPlatform.android) {
     try {
@@ -39,7 +45,14 @@ Future<Uint8List> cameraFrameToJpeg(
           'rotation': rotationDegrees,
           // The detector letterboxes to 640x640; more pixels only cost time.
           'maxSide': 640,
-          'quality': 82,
+          'quality': crop == null ? 82 : 90,
+          if (crop != null)
+            'crop': [
+              crop.left.toInt(),
+              crop.top.toInt(),
+              crop.right.toInt(),
+              crop.bottom.toInt(),
+            ],
         },
       );
       if (bytes != null && bytes.isNotEmpty) return bytes;
@@ -71,11 +84,51 @@ Future<Uint8List> cameraFrameToJpeg(
     return Uint8List(0);
   }
 
+  if (crop != null) {
+    picture = img.copyCrop(
+      picture,
+      x: crop.left.toInt(),
+      y: crop.top.toInt(),
+      width: crop.width.toInt(),
+      height: crop.height.toInt(),
+    );
+  }
   if (rotationDegrees != 0) {
     picture = img.copyRotate(picture, angle: rotationDegrees);
   }
 
-  return Uint8List.fromList(img.encodeJpg(picture, quality: 78));
+  return img.encodeJpg(picture, quality: crop == null ? 78 : 90);
+}
+
+/// Maps an upright region back to the original camera pixels.
+Rect _sensorCrop(Rect region, int width, int height, int rotation) {
+  final sensor = switch (rotation % 360) {
+    90 => Rect.fromLTRB(
+      region.top,
+      1 - region.right,
+      region.bottom,
+      1 - region.left,
+    ),
+    180 => Rect.fromLTRB(
+      1 - region.right,
+      1 - region.bottom,
+      1 - region.left,
+      1 - region.top,
+    ),
+    270 => Rect.fromLTRB(
+      1 - region.bottom,
+      region.left,
+      1 - region.top,
+      region.right,
+    ),
+    _ => region,
+  };
+  return Rect.fromLTRB(
+    (sensor.left * width).roundToDouble(),
+    (sensor.top * height).roundToDouble(),
+    (sensor.right * width).roundToDouble(),
+    (sensor.bottom * height).roundToDouble(),
+  );
 }
 
 img.Image _nv21ToImage(Uint8List nv21, int width, int height, int rowStride) {

@@ -14,30 +14,36 @@ import '../core/cue_language.dart';
 import '../core/cue_strings.dart';
 import '../core/device_sensors.dart';
 import '../core/feedback.dart';
+import '../core/finder_request.dart';
 import '../core/keep_awake.dart';
 import '../core/location_service.dart';
 import '../core/motion_monitor.dart';
+import '../core/personal_items.dart';
 import '../core/spoken_facts.dart';
 import '../core/search_target.dart';
 import '../core/tts_service.dart';
 import '../core/voice_command.dart';
 import '../core/voice_command_service.dart';
 import '../core/voice_intro.dart';
+import '../vision/camera_frame_encoder.dart';
 import '../vision/frame_source.dart';
 import '../vision/ocr_service.dart';
 import '../vision/object_detect_service.dart';
 import '../vision/detected_object.dart';
+import '../vision/personal_item_vision.dart';
 import '../core/object_labels.dart';
 import '../core/object_preferences.dart';
+import 'finder_dialog.dart';
 import 'frame_pipeline.dart';
 import 'frame_metrics.dart';
 import 'object_box_painter.dart';
 import 'scene_router.dart';
+import 'teach_item_dialog.dart';
 
 /// The five states from section 8 of the specification.
 enum LivePhase { starting, searching, paused, error }
 
-/// The whole app: one live camera, no menu, no capture button.
+/// The live camera, its spoken actions, and the item finder.
 class LiveScreen extends StatefulWidget {
   const LiveScreen({super.key});
 
@@ -48,6 +54,19 @@ class LiveScreen extends StatefulWidget {
 class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
   final PhoneCameraFrameSource _source = PhoneCameraFrameSource();
   late final FramePipeline _pipeline;
+  final _itemStore = PersonalItemStore.instance;
+  final _teachCamera = ValueNotifier<CameraController?>(null);
+  Completer<CameraFrame?>? _teachFrame;
+  bool _finderOpen = false;
+  bool _teaching = false;
+
+  /// The voice engine's readiness, kept so the first sentence can wait for the
+  /// right voice without making the camera wait too.
+  ///
+  /// Binding the TTS engine and listing its voices takes seconds on some
+  /// phones. Starting the camera behind that work made launch feel dead, so
+  /// both now run at once and only speech waits.
+  Future<CueLanguage>? _voiceReady;
 
   LivePhase _phase = LivePhase.starting;
   String? _error;
@@ -181,9 +200,14 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
     // is noise, and the aiming cues still speak up if the text is lost.
     _searchTick = Timer.periodic(const Duration(seconds: 2), (_) {
       if (!mounted) return;
+      final scanning =
+          _pipeline.isSearchingForItem ||
+          (_pipeline.interpretation != Interpretation.object &&
+              _lastResult.isEmpty);
       if (_phase == LivePhase.searching &&
-          _pipeline.interpretation != Interpretation.object &&
-          _lastResult.isEmpty &&
+          scanning &&
+          !_finderOpen &&
+          !_teaching &&
           !_listening &&
           !AudioBus.instance.speaking.value) {
         unawaited(Feedback.instance.tick());
@@ -193,6 +217,8 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
 
   @override
   void dispose() {
+    _finishTeachFrame(null);
+    _teachCamera.dispose();
     _pipeline.reset();
     _searchTick?.cancel();
     _previewTimer?.cancel();
@@ -545,6 +571,11 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
       _lastLightingFrame = now;
       _updateLighting(frame, now);
     }
+    if (_teaching) {
+      _finishTeachFrame(frame);
+      return;
+    }
+    if (_finderOpen) return;
     _pipeline.handleFrame(frame);
   }
 
@@ -649,22 +680,41 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _prepareAndStart() async {
-    final voiceLanguage = await TtsService.instance.prepareLanguage();
-    if (!mounted) return;
+    // The camera comes first: the preview, the aiming cues and the reading
+    // all come from it, and on this app's phones the voice engine can take
+    // several seconds to bind. Waiting for it made launch look broken.
+    _voiceReady = _prepareLanguage();
+    unawaited(_start());
+  }
+
+  /// Applies the saved language as soon as the voice engine can answer for it.
+  ///
+  /// Runs in parallel with the camera. Anything that speaks must await
+  /// [_voiceReady] first, or it could read in the old language after a
+  /// session-only fallback.
+  Future<CueLanguage> _prepareLanguage() async {
+    CueLanguage voiceLanguage;
+    try {
+      voiceLanguage = await TtsService.instance.prepareLanguage();
+    } catch (_) {
+      // A voice-engine failure must not break the session: keep the saved
+      // language and let the camera and OCR carry on.
+      voiceLanguage = LanguageService.instance.language.value;
+    }
+    if (!mounted) return voiceLanguage;
 
     if (voiceLanguage != LanguageService.instance.language.value) {
       // Session-only fallback. Persisting this would erase the user's saved
       // Hindi choice just because this launch had no Hindi voice.
       await LanguageService.instance.set(voiceLanguage, persist: false);
       _pipeline.setLanguage(voiceLanguage);
-      setState(() {});
+      // The saved script has no voice on this phone; load the fallback's
+      // recogniser before the first reading needs it.
+      unawaited(OcrService.instance.warmUp(voiceLanguage));
+      if (mounted) setState(() {});
     }
 
-    // Load the OCR model while the camera opens, so the first frame does not
-    // pay the model-start cost inside FR-03's two-second budget.
-    unawaited(OcrService.instance.warmUp(voiceLanguage));
-    unawaited(ObjectDetectService.instance.warmUp());
-    unawaited(_start());
+    return voiceLanguage;
   }
 
   String _cameraErrorMessage(CameraStartError error) {
@@ -718,6 +768,7 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
     }
 
     _pipeline.reset();
+    if (_teaching) _teachCamera.value = _source.controller;
     setState(() {
       _phase = LivePhase.searching;
       if (restarting) {
@@ -728,12 +779,19 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
       }
     });
 
+    // The camera is open, so the OCR model can load now without delaying it.
+    // Starting this before the camera was what made launch slow: ML Kit's
+    // first load stalls the main thread for seconds.
+    unawaited(OcrService.instance.warmUp(_language));
+
     // The display must not time out mid-page: a locked screen backgrounds the
     // app and the camera stops without a word.
     unawaited(KeepAwake.set(true));
     _showPreview();
-    unawaited(Feedback.instance.ready());
-    unawaited(_announceReady(token));
+    if (!_teaching && !_finderOpen) {
+      unawaited(Feedback.instance.ready());
+      unawaited(_announceReady(token));
+    }
     unawaited(_prepareVoice());
   }
 
@@ -744,6 +802,12 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
   /// the screen looks broken. A blind user also cannot read the dialog, so the
   /// reason is spoken first.
   Future<void> _prepareVoice() async {
+    // The recogniser is set to the user's language, so it must wait until the
+    // voice engine has settled the language (and any fallback) first.
+    final ready = _voiceReady;
+    if (ready != null) await ready;
+    if (!mounted) return;
+
     final status = await Permission.microphone.status;
     if (status.isGranted) {
       await VoiceCommandService.instance.prepare();
@@ -794,7 +858,7 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
       if (_developerMode) return;
       // Do not go dark in the middle of a reading: a sighted helper following
       // the caption gets the whole sentence, then the screen fades.
-      if (AudioBus.instance.reading.value) {
+      if (AudioBus.instance.reading.value || _pipeline.isSearchingForItem) {
         _showPreview();
         return;
       }
@@ -805,6 +869,15 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
   Future<void> _announceReady(int token) async {
     // Let the rising tone finish before the voice starts.
     await Future<void>.delayed(const Duration(milliseconds: 280));
+    if (!mounted || token != _startToken || _phase != LivePhase.searching) {
+      return;
+    }
+
+    // The camera no longer waits for the voice engine, so the intro does.
+    // Otherwise a saved Hindi choice with no Hindi voice would be spoken in
+    // English before the session fallback could take effect.
+    final ready = _voiceReady;
+    if (ready != null) await ready;
     if (!mounted || token != _startToken || _phase != LivePhase.searching) {
       return;
     }
@@ -829,11 +902,14 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
     _starting = false;
     _previewTimer?.cancel();
     _cancelVoice();
+    _finishTeachFrame(null);
+    final hadTeachPreview = _teachCamera.value != null;
+    _teachCamera.value = null;
 
     // The preview must leave the tree before the controller is disposed.
     // CameraPreview keeps listening to its controller, so disposing under a
     // still-mounted preview makes it rebuild and throw.
-    if (mounted && _previewOn) {
+    if (mounted && (_previewOn || hadTeachPreview)) {
       setState(() => _previewOn = false);
       await WidgetsBinding.instance.endOfFrame;
     } else {
@@ -873,6 +949,7 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
   /// full-screen node arrives here as a semantic tap; without TalkBack, the
   /// GestureDetector's double-tap does the same thing.
   void _activate() {
+    if (_finderOpen || _teaching) return;
     if (_listening) {
       // A second double-tap while listening cancels the listen instead of
       // starting a reading the microphone would hear.
@@ -915,44 +992,195 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
     unawaited(AudioBus.instance.repeatLast());
   }
 
-  Future<void> _chooseItem() async {
-    final target = await showDialog<SearchTarget>(
-      context: context,
-      builder: (context) => SimpleDialog(
-        title: Text(_strings.findItem),
-        children: [
-          for (final item in SearchTarget.values)
-            SimpleDialogOption(
-              onPressed: () => Navigator.pop(context, item),
-              child: Text(_language.isHindi ? item.hindi : item.english),
-            ),
-        ],
-      ),
-    );
-    if (mounted && target != null) _findItem(target);
+  void _announceFinder(String message) {
+    unawaited(AudioBus.instance.say(message, priority: SpeechPriority.answer));
+  }
+
+  bool _finderReady() {
+    if (_phase == LivePhase.searching &&
+        _source.controller?.value.isInitialized == true) {
+      return true;
+    }
+    _announceFinder(_strings.finderUnavailable);
+    return false;
+  }
+
+  Future<void> _chooseItem({String initialName = ''}) async {
+    if (_finderOpen || _teaching || !_finderReady()) return;
+    setState(() {
+      _finderOpen = true;
+      if (initialName.isEmpty && _pipeline.isSearchingForItem) {
+        _lastResult = _strings.searchStopped;
+      }
+      _pipeline.reset();
+    });
+    FinderRequest? request;
+    try {
+      await AudioBus.instance.stop();
+      var items = const <PersonalItem>[];
+      var storageUnavailable = false;
+      try {
+        items = await _itemStore.read();
+      } catch (_) {
+        storageUnavailable = true;
+      }
+      if (!mounted || _phase != LivePhase.searching) return;
+      final dialog = showDialog<FinderRequest>(
+        context: context,
+        builder: (context) => FinderDialog(
+          strings: _strings,
+          items: items,
+          sayName: _listenForItemName,
+          removeItem: _itemStore.forget,
+          announce: _announceFinder,
+          initialName: initialName,
+          storageUnavailable: storageUnavailable,
+        ),
+      );
+      if (initialName.isNotEmpty) _announceFinder(_strings.unrecognizedItem);
+      request = await dialog;
+    } finally {
+      _finderOpen = false;
+      if (mounted && _listening) _cancelVoice();
+    }
+    if (mounted && request != null) await _runFinderRequest(request);
+  }
+
+  Future<void> _runFinderRequest(FinderRequest request) async {
+    if (!mounted || _finderOpen || _teaching) return;
+    if (request.action == FinderAction.teach) {
+      await _teachItem(request.name);
+      return;
+    }
+    if (request.commonTarget case final target?) {
+      _findItem(target);
+      return;
+    }
+    if (request.name.isEmpty) {
+      await _chooseItem();
+      return;
+    }
+    if (!_finderReady()) return;
+    final common = builtInFinderTarget(request.name);
+    PersonalItem? personal;
+    try {
+      personal = taughtFinderItem(await _itemStore.read(), request.name);
+    } catch (_) {
+      if (!mounted) return;
+      if (common == null) {
+        _announceFinder(_strings.itemStoreError);
+        return;
+      }
+    }
+    if (!mounted || _finderOpen || _teaching || !_finderReady()) return;
+    if (personal case final profile?) {
+      _startFinding(
+        _strings.searchingNamedItem(profile.name),
+        () => _pipeline.startPersonalItemSearch(profile),
+      );
+    } else if (common != null) {
+      _findItem(common);
+    } else {
+      final message = _strings.unrecognizedItem;
+      _onResult(message);
+      await _chooseItem(initialName: request.name);
+    }
   }
 
   void _findItem(SearchTarget target) {
-    if (_phase != LivePhase.searching) {
-      unawaited(
-        AudioBus.instance.say(
-          _strings.retryHint,
-          priority: SpeechPriority.navigation,
-        ),
-      );
-      return;
-    }
+    if (!_finderReady()) return;
+    unawaited(ObjectDetectService.instance.warmUp());
+    _startFinding(
+      _strings.searchingItem(target),
+      () => _pipeline.startItemSearch(target),
+    );
+  }
+
+  void _startFinding(String message, VoidCallback start) {
     setState(() {
-      _pipeline.startItemSearch(target);
-      _lastResult = '';
+      start();
+      _lastResult = message;
     });
     _showPreview();
-    unawaited(
-      AudioBus.instance.say(
-        _strings.searchingItem(target),
-        priority: SpeechPriority.navigation,
-      ),
+    _announceFinder(message);
+  }
+
+  Future<void> _teachItem(String name) async {
+    if (_finderOpen || _teaching || !_finderReady()) return;
+    setState(() {
+      _teaching = true;
+      if (_pipeline.isSearchingForItem) _lastResult = _strings.searchStopped;
+      _pipeline.reset();
+    });
+    _teachCamera.value = _source.controller;
+    PersonalItem? saved;
+    try {
+      await AudioBus.instance.stop();
+      final items = await _itemStore.read();
+      if (!mounted || _phase != LivePhase.searching) return;
+      saved = await showDialog<PersonalItem>(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => TeachItemDialog(
+          strings: _strings,
+          camera: _teachCamera,
+          items: items,
+          sayName: _listenForItemName,
+          capture: _capturePersonalExample,
+          save: _itemStore.save,
+          announce: _announceFinder,
+          initialName: name,
+        ),
+      );
+    } catch (_) {
+      if (mounted) _announceFinder(_strings.itemStoreError);
+    } finally {
+      if (mounted) {
+        _finishTeachFrame(null);
+        _teachCamera.value = null;
+        setState(() => _teaching = false);
+        if (_listening) _cancelVoice();
+      }
+    }
+    if (!mounted || saved == null) return;
+    final message = _strings.itemTaught(saved.name);
+    _onResult(message);
+    unawaited(Feedback.instance.found());
+    _announceFinder(message);
+  }
+
+  void _finishTeachFrame(CameraFrame? frame) {
+    final pending = _teachFrame;
+    _teachFrame = null;
+    pending?.complete(frame);
+  }
+
+  Future<PersonalExample> _capturePersonalExample() async {
+    final controller = _teachCamera.value;
+    if (!_teaching || controller == null || _teachFrame != null) {
+      throw StateError('No camera available for teaching');
+    }
+    final pending = Completer<CameraFrame?>();
+    _teachFrame = pending;
+    final frame = await pending.future
+        .timeout(const Duration(seconds: 3), onTimeout: () => null)
+        .whenComplete(() {
+          if (identical(_teachFrame, pending)) _teachFrame = null;
+        });
+    if (frame == null) throw StateError('No teaching frame received');
+    final rotation = rotationDegrees(
+      frame.description,
+      frame.deviceOrientation,
     );
+    final jpeg = await cameraFrameToJpeg(frame, rotation);
+    final example = await const PersonalItemVision().capture(
+      jpeg,
+      uprightSize(frame.image.width, frame.image.height, rotation),
+    );
+    if (!mounted || !identical(controller, _teachCamera.value)) {
+      throw StateError('Camera changed while capturing the example');
+    }
+    return example;
   }
 
   void _stopSpeech() {
@@ -1047,6 +1275,12 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
         priority: SpeechPriority.navigation,
       );
       return;
+    }
+    if (next == Interpretation.object) {
+      // Load the detector when the mode is chosen, not at launch: warming a
+      // 10 MB model on a cold start competes with the camera and OCR, and
+      // most sessions never leave text mode.
+      unawaited(ObjectDetectService.instance.warmUp());
     }
     if (!mounted) return;
     setState(() => _pipeline.setInterpretation(next));
@@ -1234,6 +1468,7 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
     debugPrint('voice: key ${call.method}');
     switch (call.method) {
       case 'talkStart':
+        if (_finderOpen || _teaching) return null;
         _talkKeyHeld = true;
         // A press while the previous listen is still ending is the user
         // retrying. Ignoring it made Cue feel dead for up to a second after a
@@ -1277,7 +1512,32 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
   /// Nothing is spoken before listening: the microphone would hear it. A short
   /// rising tone and vibration tell the user that Cue is ready for a command.
   Future<void> _listenForCommand() async {
-    if (_listening) return;
+    if (_finderOpen || _teaching) return;
+    final result = await _listen();
+    if (result == null) return;
+    await _runVoiceResult(result);
+    await _sayReadingPausedHint();
+  }
+
+  Future<String?> _listenForItemName() async {
+    final result = await _listen(dictation: true);
+    if (!mounted || result == null) return null;
+    if (result.ok) return result.words;
+    unawaited(Feedback.instance.notHeard());
+    _announceFinder(
+      result.problem == VoiceProblem.noSpeech ||
+              result.problem == VoiceProblem.noMatch
+          ? _strings.nameNotHeard
+          : _voiceProblemMessage(result.problem),
+    );
+    return null;
+  }
+
+  Future<VoiceCommandResult?> _listen({bool dictation = false}) async {
+    if (_listening) return null;
+    final token = ++_listenToken;
+    final startedByKey = _talkKeyHeld && !dictation;
+    setState(() => _listening = true);
 
     // Silence Cue first and keep it silent: if a sentence starts between the
     // stop and the microphone opening, the recogniser transcribes Cue instead
@@ -1288,13 +1548,7 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
     } catch (_) {
       // A slow stop is not a reason to refuse to listen.
     }
-    if (!mounted) {
-      AudioBus.instance.unmute();
-      return;
-    }
-
-    final token = ++_listenToken;
-    setState(() => _listening = true);
+    if (!mounted || token != _listenToken) return null;
     _showPreview();
 
     try {
@@ -1306,20 +1560,26 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
       VoiceCommandResult? result;
       for (var attempt = 0; attempt < 2; attempt++) {
         result = await VoiceCommandService.instance.listen(
-          onReady: () => unawaited(Feedback.instance.listening()),
+          dictation: dictation,
+          onReady: () {
+            if (startedByKey && !_talkKeyHeld) {
+              unawaited(VoiceCommandService.instance.finishListening());
+            } else {
+              unawaited(Feedback.instance.listening());
+            }
+          },
         );
-        if (!mounted || token != _listenToken) return;
+        if (!mounted || token != _listenToken) return null;
         // Nothing was heard. If the key is still down, listen once more rather
         // than making the user perform the whole hold-and-speak ritual again.
-        if (result.problem != VoiceProblem.noSpeech || !_talkKeyHeld) break;
+        if (!startedByKey ||
+            result.problem != VoiceProblem.noSpeech ||
+            !_talkKeyHeld) {
+          break;
+        }
         unawaited(Feedback.instance.notHeard());
       }
-      if (result == null) return;
-
-      setState(() => _listening = false);
-      AudioBus.instance.unmute();
-      await _runVoiceResult(result);
-      await _sayReadingPausedHint();
+      return result;
     } finally {
       // Every exit path must reopen the voice: a denied permission or a
       // cancelled listen would otherwise leave Cue silent for good. But an
@@ -1336,12 +1596,18 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _runVoiceResult(VoiceCommandResult result) async {
+    if (!mounted) return;
     if (result.problem != VoiceProblem.none) {
       unawaited(Feedback.instance.notHeard());
       await AudioBus.instance.say(
         _voiceProblemMessage(result.problem),
         priority: SpeechPriority.alert,
       );
+      return;
+    }
+    if (FinderRequest.parse(result.words) case final request?) {
+      unawaited(Feedback.instance.heard());
+      await _runFinderRequest(request);
       return;
     }
     if (result.command == VoiceCommand.unknown) {
@@ -1606,6 +1872,9 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
 
   String get _semanticsLabel {
     if (_listening) return _strings.semanticsListening;
+    if (_pipeline.activeItemName case final name?) {
+      return _strings.findingItem(name);
+    }
     switch (_phase) {
       case LivePhase.starting:
         return _strings.semanticsStarting;
@@ -1623,6 +1892,9 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
       case LivePhase.starting:
         return _strings.startingCamera;
       case LivePhase.searching:
+        if (_pipeline.activeItemName case final name?) {
+          return _strings.findingItem(name);
+        }
         return AudioBus.instance.readingPaused
             ? _strings.readingPausedLabel
             : _strings.cueLooking;
@@ -1640,17 +1912,28 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
         controller != null &&
         controller.value.isInitialized &&
         _phase == LivePhase.searching;
+    final finding = _pipeline.isSearchingForItem;
 
     return Scaffold(
       backgroundColor: Colors.black,
-      floatingActionButton: _phase == LivePhase.searching &&
-              _pipeline.interpretation == Interpretation.object
-          ? Padding(
-              padding: const EdgeInsets.only(bottom: 72),
-              child: FloatingActionButton.extended(
-                onPressed: _pipeline.isSearchingForItem ? _stopSpeech : _chooseItem,
-                icon: Icon(_pipeline.isSearchingForItem ? Icons.stop : Icons.search),
-                label: Text(_pipeline.isSearchingForItem ? _strings.stopSearch : _strings.findItem),
+      bottomNavigationBar: showPreview
+          ? SafeArea(
+              top: false,
+              minimum: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+              child: Align(
+                alignment: Alignment.center,
+                heightFactor: 1,
+                child: FilledButton.icon(
+                  onPressed: _listening
+                      ? null
+                      : finding
+                      ? _stopSpeech
+                      : _chooseItem,
+                  icon: Icon(finding ? Icons.stop : Icons.search),
+                  label: Text(
+                    finding ? _strings.stopSearch : _strings.findItem,
+                  ),
+                ),
               ),
             )
           : null,
@@ -1674,7 +1957,12 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
               ),
             ): () =>
                 _setAutoDescriptions(!_pipeline.automaticDescriptions),
-          CustomSemanticsAction(label: _strings.findItem): _chooseItem,
+          if (showPreview)
+            CustomSemanticsAction(
+              label: finding ? _strings.stopSearch : _strings.findItem,
+            ): finding
+                ? _stopSpeech
+                : _chooseItem,
           CustomSemanticsAction(label: _strings.actionRepeat): _repeat,
           CustomSemanticsAction(label: _strings.actionStop): _stopSpeech,
           CustomSemanticsAction(label: _strings.actionPauseResume):
@@ -1734,7 +2022,7 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
                     // from the tree instead of fading in place. A fading child
                     // stays mounted, and CameraPreview throws if it rebuilds
                     // after the controller has been disposed.
-                    child: _previewOn
+                    child: _previewOn && !_teaching
                         ? _preview(controller)
                         : const SizedBox.shrink(),
                   ),
@@ -1903,7 +2191,7 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
     return ExcludeSemantics(
       child: Container(
         width: double.infinity,
-        padding: const EdgeInsets.fromLTRB(24, 48, 24, 40),
+        padding: const EdgeInsets.fromLTRB(24, 48, 24, 16),
         decoration: const BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topCenter,

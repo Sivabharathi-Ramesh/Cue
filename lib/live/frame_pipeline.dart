@@ -10,6 +10,7 @@ import '../core/cue_language.dart';
 import '../core/cue_strings.dart';
 import '../core/feedback.dart';
 import '../core/motion_monitor.dart';
+import '../core/personal_items.dart';
 import '../core/text_similarity.dart';
 import '../core/search_target.dart';
 import '../core/tts_service.dart';
@@ -21,9 +22,11 @@ import '../vision/detected_object.dart';
 import '../vision/object_detect_service.dart';
 import '../vision/object_tracker.dart';
 import '../vision/object_colour.dart';
+import '../vision/personal_item_vision.dart';
 import '../core/object_labels.dart';
 import 'aiming_coach.dart';
 import 'frame_metrics.dart';
+import 'item_search.dart';
 import 'reading_quality.dart';
 import 'scene_router.dart';
 import 'stability_gate.dart';
@@ -268,67 +271,128 @@ class FramePipeline {
     unawaited(_handle(frame));
   }
 
-  ObjectTracker? _itemSearch;
+  ItemSearch? _itemSearch;
   Timer? _searchDeadline;
-  DateTime? _lastSearchPass;
+  final _personalVision = const PersonalItemVision();
 
   bool get isSearchingForItem => _itemSearch != null;
 
-  late SearchTarget _target;
+  String? get activeItemName {
+    final search = _itemSearch;
+    final builtIn = search?.target;
+    return builtIn == null
+        ? search?.personalItem?.name
+        : _language.isHindi
+        ? builtIn.hindi
+        : builtIn.english;
+  }
 
-  void startItemSearch(SearchTarget target) {
+  void startItemSearch(SearchTarget target) => _startItemSearch(
+    ItemSearch(target, DateTime.now()),
+    _strings.itemNotSeen(target),
+  );
+
+  void startPersonalItemSearch(PersonalItem item) => _startItemSearch(
+    ItemSearch.personal(item, DateTime.now()),
+    _strings.namedItemNotSeen(item.name),
+  );
+
+  void _startItemSearch(ItemSearch search, String timeoutMessage) {
     reset();
     _interpretation = Interpretation.object;
-    _target = target;
-    _itemSearch = ObjectTracker(passesToConfirm: 2, passesToForget: 1);
+    _itemSearch = search;
     _searchDeadline = Timer(const Duration(seconds: 30), () {
-      stopItemSearch();
-      final message = _strings.itemNotSeen(target);
-      onResult(message);
-      unawaited(
-        AudioBus.instance.say(message, priority: SpeechPriority.answer),
-      );
+      _finishItemSearch(search, timeoutMessage);
     });
   }
 
   bool stopItemSearch() {
-    final active = _itemSearch != null;
+    if (_itemSearch == null) return false;
     _itemSearch = null;
     _searchDeadline?.cancel();
     _searchDeadline = null;
-    _lastSearchPass = null;
-    return active;
+    detectedObjects.value = const [];
+    return true;
   }
 
-  Future<void> _searchFrame(CameraFrame frame, ObjectTracker search) async {
-    final quality = _sampler.sample(frame.image);
-    if (quality.isTooBlurry || quality.isTooDark) {
-      search.reset();
-      detectedObjects.value = const [];
-      return;
-    }
+  Future<void> _searchFrame(
+    CameraFrame frame,
+    ItemSearch search,
+    DateTime capturedAt,
+  ) async {
+    // A small item on a plain surface can be sharp even when the scene-wide
+    // blur score is low. Let the model and the fresh-frame tracker check it.
     final rotation = rotationDegrees(
       frame.description,
       frame.deviceOrientation,
     );
-    final jpeg = await cameraFrameToJpeg(frame, rotation);
-    if (!identical(search, _itemSearch)) return;
-    final candidates = await ObjectDetectService.instance.detect(
-      jpeg,
-      searchTarget: _target,
+    search.beginFrame(capturedAt, rotation);
+    final jpeg = await cameraFrameToJpeg(
+      frame,
+      rotation,
+      region: search.region,
     );
     if (!identical(search, _itemSearch)) return;
-    detectedObjects.value = candidates;
-    final matches = search.update(candidates);
-    if (matches.isEmpty || AudioBus.instance.isMuted) return;
+    final personal = search.personalItem;
+    final List<DetectedObject> candidates;
+    ObjectDirection? personalDirection;
+    if (personal == null) {
+      candidates = await ObjectDetectService.instance.detect(
+        jpeg,
+        searchTarget: search.target,
+      );
+    } else {
+      final observation = await _personalVision.find(
+        jpeg,
+        uprightSize(frame.image.width, frame.image.height, rotation),
+        personal,
+        detail: search.scanDetail,
+      );
+      candidates = observation.candidates;
+      personalDirection = observation.direction;
+    }
+    if (!identical(search, _itemSearch) || AudioBus.instance.isMuted) return;
+    final now = DateTime.now();
+    if (now.difference(capturedAt) > _staleAfter &&
+        MotionMonitor.instance.isMoving) {
+      return;
+    }
+    final observation = search.observe(candidates);
+    if (developerMode) detectedObjects.value = observation.candidates;
+    final match = observation.match;
+    if (match == null) {
+      if (search.takeHint(now)) {
+        final message = _strings.itemSearchHint;
+        onResult(message);
+        unawaited(
+          AudioBus.instance.say(message, priority: SpeechPriority.navigation),
+        );
+      }
+      return;
+    }
+    final answer = personal == null
+        ? objectDescription(
+            [match],
+            hindi: _language.isHindi,
+            includeDistance: false,
+          )
+        : _strings.personalItemFound(personal.name, personalDirection);
+    _finishItemSearch(search, answer, match: match);
+  }
+
+  void _finishItemSearch(
+    ItemSearch search,
+    String message, {
+    DetectedObject? match,
+  }) {
+    if (!identical(search, _itemSearch)) return;
     stopItemSearch();
-    final answer = objectDescription(
-      [matches.first.withColour(null)],
-      hindi: _language.isHindi,
-      includeDistance: false,
-    );
-    onResult(answer);
-    await AudioBus.instance.say(answer, priority: SpeechPriority.answer);
+    if (match != null) {
+      detectedObjects.value = [match];
+      unawaited(Feedback.instance.found());
+    }
+    onResult(message);
+    unawaited(AudioBus.instance.say(message, priority: SpeechPriority.answer));
   }
 
   /// Double-tap / "read now": ignore the change gate and the stability gate.
@@ -404,6 +468,7 @@ class FramePipeline {
   }
 
   /// Invalidates in-flight work when the camera stops.
+  /// A running frame still owns the analyser until its native call returns.
   void reset() {
     stopItemSearch();
     _generation++;
@@ -412,7 +477,6 @@ class FramePipeline {
     _sampler.reset();
     _stability.reset();
     _coach.reset();
-    _busy = false;
     _manualRequested = false;
     _untrustedStreak = 0;
     _lastHonestyAt = null;
@@ -470,28 +534,22 @@ class FramePipeline {
       } catch (_) {
         if (!req.isCompleted) req.complete(null);
       } finally {
-        if (generation == _generation) _busy = false;
+        _busy = false;
       }
       return;
     }
 
     final search = _itemSearch;
     if (search != null && _objectOnRequest == null) {
-      if (AudioBus.instance.isMuted ||
-          (_lastSearchPass != null &&
-              now.difference(_lastSearchPass!) <
-                  const Duration(milliseconds: 450))) {
-        return;
-      }
-      _lastSearchPass = now;
+      if (AudioBus.instance.isMuted || !search.ready(now)) return;
       _busy = true;
       try {
-        await _searchFrame(frame, search);
+        await _searchFrame(frame, search, now);
       } catch (error) {
-        search.reset();
         if (kDebugMode) debugPrint('Item search frame failed: $error');
+        _finishItemSearch(search, _strings.itemSearchUnavailable);
       } finally {
-        if (generation == _generation) _busy = false;
+        _busy = false;
       }
       return;
     }
@@ -593,7 +651,7 @@ class FramePipeline {
           _sayObjectMiss();
         }
       } finally {
-        if (generation == _generation) _busy = false;
+        _busy = false;
       }
       return;
     }
@@ -635,7 +693,7 @@ class FramePipeline {
       try {
         await _readBanknote(frame, manual: manual, generation: generation);
       } finally {
-        if (generation == _generation) _busy = false;
+        _busy = false;
       }
       return;
     }
@@ -915,9 +973,7 @@ class FramePipeline {
       // One bad frame must never take the live screen down. The next frame
       // gets another chance.
     } finally {
-      // reset() already unlocked the pipeline; an old analysis finishing late
-      // must not unlock a newer one that is still running.
-      if (generation == _generation) _busy = false;
+      _busy = false;
     }
   }
 

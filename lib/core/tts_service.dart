@@ -53,6 +53,11 @@ class TtsService {
   /// refusing to speak at all.
   bool? _canListLanguages;
 
+  /// Voice and language lists are expensive to fetch — seconds on some phones —
+  /// and do not change during a session. Fetch each once, on first use.
+  List<dynamic>? _voices;
+  List<dynamic>? _languages;
+
   double _rate = 0.0;
 
   /// The rate currently applied to the voice, on the flutter_tts scale.
@@ -188,8 +193,8 @@ class TtsService {
   /// Selects the highest quality, most articulate voice available for [locale].
   Future<void> _selectClearVoice(String locale) async {
     try {
-      final voices = await _tts.getVoices;
-      if (voices is! List || voices.isEmpty) return;
+      final voices = await _voiceList();
+      if (voices == null) return;
 
       final wanted = _normaliseLocale(locale);
       Map<dynamic, dynamic>? bestVoice;
@@ -254,27 +259,51 @@ class TtsService {
   Future<bool> _isAvailable(String locale) async {
     if (_canListLanguages == false) return true;
 
-    try {
-      final languages = await _tts.getLanguages;
-      if (languages is! List || languages.isEmpty) {
-        _canListLanguages = false;
-        return true;
-      }
-      _canListLanguages = true;
-
-      final wanted = _normaliseLocale(locale);
-      for (final item in languages) {
-        final id = item is Map ? item['locale']?.toString() : item?.toString();
-        if (id == null) continue;
-        final normalised = _normaliseLocale(id);
-        if (normalised == wanted || normalised.startsWith('$wanted-')) {
-          return true;
-        }
-      }
-      return false;
-    } catch (_) {
+    final languages = await _languageList();
+    if (languages == null) {
       _canListLanguages = false;
       return true;
+    }
+    _canListLanguages = true;
+
+    final wanted = _normaliseLocale(locale);
+    for (final item in languages) {
+      final id = item is Map ? item['locale']?.toString() : item?.toString();
+      if (id == null) continue;
+      final normalised = _normaliseLocale(id);
+      if (normalised == wanted || normalised.startsWith('$wanted-')) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /// The engine's voice list, fetched at most once per session.
+  ///
+  /// An empty or failed answer is not cached: the engine may simply not be
+  /// ready yet, and a later attempt should still be allowed to succeed.
+  Future<List<dynamic>?> _voiceList() async {
+    final cached = _voices;
+    if (cached != null) return cached;
+    try {
+      final voices = await _tts.getVoices;
+      if (voices is! List || voices.isEmpty) return null;
+      return _voices = voices;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// The engine's language list, fetched at most once per session.
+  Future<List<dynamic>?> _languageList() async {
+    final cached = _languages;
+    if (cached != null) return cached;
+    try {
+      final languages = await _tts.getLanguages;
+      if (languages is! List || languages.isEmpty) return null;
+      return _languages = languages;
+    } catch (_) {
+      return null;
     }
   }
 

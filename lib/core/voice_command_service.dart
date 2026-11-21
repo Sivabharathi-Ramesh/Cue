@@ -7,6 +7,7 @@ import 'package:speech_to_text/speech_recognition_result.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 
 import 'cue_language.dart';
+import 'finder_request.dart';
 import 'voice_command.dart';
 
 /// Why a voice command attempt produced no command.
@@ -50,8 +51,7 @@ class VoiceCommandResult {
 
   final VoiceProblem problem;
 
-  bool get ok =>
-      problem == VoiceProblem.none && command != VoiceCommand.unknown;
+  bool get ok => problem == VoiceProblem.none;
 }
 
 /// Press-to-talk voice commands.
@@ -214,6 +214,7 @@ class VoiceCommandService {
   /// The last words the recogniser reported, used when the user releases the
   /// talk key before the platform sends a final result.
   String _lastWords = '';
+  bool _dictating = false;
 
   bool get isListening => _listening;
 
@@ -239,7 +240,10 @@ class VoiceCommandService {
   ///
   /// The caller should stop any speech first: otherwise the microphone hears
   /// Cue's own voice.
-  Future<VoiceCommandResult> listen({void Function()? onReady}) async {
+  Future<VoiceCommandResult> listen({
+    bool dictation = false,
+    void Function()? onReady,
+  }) async {
     if (_listening) {
       return const VoiceCommandResult(
         VoiceCommand.unknown,
@@ -281,6 +285,7 @@ class VoiceCommandService {
     _listening = true;
     _stopping = false;
     _lastWords = '';
+    _dictating = dictation;
     _readyCallback = onReady;
     final session = ++_session;
     final completer = Completer<VoiceCommandResult>();
@@ -295,14 +300,16 @@ class VoiceCommandService {
         listenOptions: stt.SpeechListenOptions(
           partialResults: true,
           cancelOnError: true,
-          listenMode: stt.ListenMode.confirmation,
+          listenMode: dictation
+              ? stt.ListenMode.dictation
+              : stt.ListenMode.confirmation,
           // Silence ends the command. A user who pauses to think mid-sentence
           // should not be cut off, so it is generous; the overall window is a
           // little longer than a slow command needs.
           pauseFor: const Duration(milliseconds: 2500),
           listenFor: const Duration(seconds: 8),
           localeId: _localeId,
-          contextualPhrases: _phrasesFor(_language),
+          contextualPhrases: dictation ? const [] : _phrasesFor(_language),
         ),
       );
     } catch (error) {
@@ -324,21 +331,7 @@ class VoiceCommandService {
     Timer(const Duration(seconds: 8), () {
       if (!_listening || session != _session) return;
       unawaited(_speech.stop().catchError((_) {}));
-      final words = _lastWords.trim();
-      final command = words.isEmpty
-          ? VoiceCommand.unknown
-          : parseVoiceCommand(words);
-      _finish(
-        VoiceCommandResult(
-          command,
-          words: words,
-          problem: words.isEmpty
-              ? VoiceProblem.noSpeech
-              : command == VoiceCommand.unknown
-              ? VoiceProblem.noMatch
-              : VoiceProblem.none,
-        ),
-      );
+      _finish(_interpret(_lastWords));
     });
 
     return completer.future;
@@ -369,27 +362,7 @@ class VoiceCommandService {
     Timer(const Duration(milliseconds: 1000), () {
       if (!_listening || session != _session) return;
 
-      final words = _lastWords.trim();
-      if (words.isEmpty) {
-        _finish(
-          const VoiceCommandResult(
-            VoiceCommand.unknown,
-            problem: VoiceProblem.noSpeech,
-          ),
-        );
-        return;
-      }
-
-      final command = parseVoiceCommand(words);
-      _finish(
-        VoiceCommandResult(
-          command,
-          words: words,
-          problem: command == VoiceCommand.unknown
-              ? VoiceProblem.noMatch
-              : VoiceProblem.none,
-        ),
-      );
+      _finish(_interpret(_lastWords));
     });
   }
 
@@ -533,6 +506,25 @@ class VoiceCommandService {
   List<String> _phrasesFor(CueLanguage language) =>
       language.isHindi ? _phrasesHindi : _phrases;
 
+  VoiceCommandResult _interpret(String words) {
+    final command = _dictating
+        ? VoiceCommand.unknown
+        : parseVoiceCommand(words);
+    final understood =
+        _dictating ||
+        command != VoiceCommand.unknown ||
+        FinderRequest.parse(words) != null;
+    return VoiceCommandResult(
+      command,
+      words: words,
+      problem: words.isEmpty
+          ? VoiceProblem.noSpeech
+          : understood
+          ? VoiceProblem.none
+          : VoiceProblem.noMatch,
+    );
+  }
+
   void _onResult(int session, SpeechRecognitionResult result) {
     // A final callback from a listen that has already ended must not act on a
     // newer listen, or the previous command would be replayed by accident.
@@ -542,26 +534,15 @@ class VoiceCommandService {
     if (words.isEmpty) return;
     _lastWords = words;
 
-    final command = parseVoiceCommand(words);
-    debugPrint(
-      'voice: heard "$words" -> ${command.name} '
-      'final=${result.finalResult}',
-    );
-
-    if (command != VoiceCommand.unknown) {
-      unawaited(_speech.stop().catchError((_) {}));
-      _finish(VoiceCommandResult(command, words: words));
-      return;
-    }
-
+    final interpretation = _interpret(words);
     if (result.finalResult) {
-      _finish(
-        VoiceCommandResult(
-          VoiceCommand.unknown,
-          words: words,
-          problem: VoiceProblem.noMatch,
-        ),
-      );
+      _finish(interpretation);
+    } else if (!_dictating &&
+        interpretation.command != VoiceCommand.unknown &&
+        interpretation.command.target == null &&
+        FinderRequest.parse(words) == null) {
+      unawaited(_speech.stop().catchError((_) {}));
+      _finish(interpretation);
     }
   }
 
@@ -593,13 +574,10 @@ class VoiceCommandService {
     // The words are already known, so they are parsed before the error is
     // turned into a failure. Otherwise a command the user did say is answered
     // with "I did not understand", which is the most confusing failure of all.
-    final heard = _lastWords.trim();
-    if (heard.isNotEmpty) {
-      final command = parseVoiceCommand(heard);
-      if (command != VoiceCommand.unknown) {
-        _finish(VoiceCommandResult(command, words: heard));
-        return;
-      }
+    final heard = _interpret(_lastWords);
+    if (heard.ok) {
+      _finish(heard);
+      return;
     }
 
     final message = error.errorMsg.toLowerCase();

@@ -10,4 +10,7 @@ enum SearchTarget {
   final String english;
   final String hindi;
   final Set<String> labels;
+
+  /// Small items benefit from scanning closer views of the camera frame.
+  bool get needsDetail => this == keys || this == glasses || this == pen;
 }

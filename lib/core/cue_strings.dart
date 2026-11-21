@@ -1,3 +1,4 @@
+import '../vision/detected_object.dart';
 import 'cue_language.dart';
 import 'search_target.dart';
 
@@ -335,18 +336,121 @@ class CueStrings {
       _hi ? 'पिछला जवाब: $text' : 'Last answer: $text';
 
   String get findItem => _hi ? 'चीज़ खोजें' : 'Find an item';
+  String get itemName => _hi ? 'चीज़ का नाम' : 'Item name';
+  String get sayItemName => _hi ? 'नाम बोलें' : 'Say the name';
+  String heardItemName(String name) => _hi ? '$name सुना।' : 'Heard $name.';
+  String get startSearch => _hi ? 'खोज शुरू करें' : 'Start search';
+  String get browseItems => _hi ? 'सूची से चुनें' : 'Choose from a list';
+  String get commonItems => _hi ? 'आम चीज़ें' : 'Common items';
+  String get myItems => _hi ? 'मेरी चीज़ें' : 'My items';
+  String get teachItem => _hi ? 'नई चीज़ सिखाएँ' : 'Teach an item';
+  String get cancel => _hi ? 'रद्द करें' : 'Cancel';
+  String get next => _hi ? 'आगे' : 'Continue';
+  String get captureExample => _hi ? 'उदाहरण लें' : 'Capture example';
+  String get capturingExample =>
+      _hi ? 'उदाहरण ले रहे हैं' : 'Capturing example';
+  String get retakeExample =>
+      _hi ? 'पिछला उदाहरण फिर लें' : 'Retake last example';
+  String get saveItem => _hi ? 'चीज़ सहेजें' : 'Save item';
+  String get savingItem => _hi ? 'चीज़ सहेज रहे हैं' : 'Saving item';
+  String get itemNameNeeded =>
+      _hi ? 'चीज़ का नाम लिखें या बोलें।' : 'Enter or say an item name.';
+  String get itemNameTooLong =>
+      _hi ? 'नाम 60 अक्षरों तक रखें।' : 'Use an item name up to 60 characters.';
+  String get confirmReplace => _hi ? 'बदलें' : 'Replace';
+  String get removeItem => _hi ? 'हटाएँ' : 'Remove';
+  String replaceItemQuestion(String name) =>
+      _hi ? '$name के उदाहरण बदलें?' : 'Replace the examples for $name?';
+  String removeItemQuestion(String name) =>
+      _hi ? '$name को हटाएँ?' : 'Remove $name?';
+  String removeItemLabel(String name) => _hi ? '$name हटाएँ' : 'Remove $name';
+  String itemRemoved(String name) => _hi ? '$name हटा दिया।' : 'Removed $name.';
+  String get finderUnavailable =>
+      _hi ? 'कैमरा शुरू होने पर खोजें।' : 'Start the camera to use Find.';
+  String get itemStoreError => _hi
+      ? 'सहेजी गई चीज़ें नहीं खोल सका।'
+      : 'Cue couldn’t open your saved items.';
+  String get itemSaveError => _hi
+      ? 'चीज़ सहेज नहीं सका। फिर से कोशिश करें।'
+      : 'Cue couldn’t save the item. Try again.';
+  String get itemRemoveError => _hi
+      ? 'चीज़ हटा नहीं सका। फिर से कोशिश करें।'
+      : 'Cue couldn’t remove the item. Try again.';
+  String get itemCaptureError => _hi
+      ? 'उदाहरण नहीं ले सका। कैमरा जाँचकर फिर से कोशिश करें।'
+      : 'Cue couldn’t capture that example. Check the camera and try again.';
+  String get itemCaptureUnclear => _hi
+      ? 'चीज़ को खाली सतह पर रखें, कैमरा उसके ठीक ऊपर लाएँ और फिर कोशिश करें।'
+      : 'Put the item on a clear surface, aim directly over it, and try again.';
+  String get itemCaptureDifferent => _hi
+      ? 'उसी चीज़ को कैमरे के बीच रखें और उसका कोण थोड़ा बदलकर फिर से लें।'
+      : 'Keep the same item in the centre and try a smaller change in angle.';
+  String get unrecognizedItem => _hi
+      ? 'इस नाम की चीज़ सिखाएँ या सूची से चुनें।'
+      : 'Teach Cue this item, or choose an item from the list.';
+  String get nameNotHeard => _hi
+      ? 'नाम सुनाई नहीं दिया। नाम लिखें या फिर से बोलें।'
+      : 'Cue didn’t hear a name. Type it or try speaking again.';
+  String teachingItem(String name) => _hi ? '$name सिखाएँ' : 'Teach $name';
+  String teachingProgress(int count, int total) =>
+      _hi ? '$total में से $count उदाहरण' : '$count of $total examples';
+  String teachingPrompt(int count) => switch (count) {
+    0 =>
+      _hi
+          ? 'चीज़ को खाली सतह पर रखें। कैमरा उसके ठीक ऊपर रखें और पहला उदाहरण लें।'
+          : 'Put the item on a clear surface. Hold the phone directly above it and capture the first example.',
+    1 =>
+      _hi
+          ? 'चीज़ को थोड़ा घुमाएँ और दूसरा उदाहरण लें।'
+          : 'Turn the item a little and capture the second example.',
+    2 =>
+      _hi
+          ? 'कैमरे का कोण थोड़ा बदलकर आखिरी उदाहरण लें।'
+          : 'Tilt the phone a little and capture the last example.',
+    _ =>
+      _hi
+          ? 'सभी उदाहरण तैयार हैं। चीज़ सहेजें।'
+          : 'All examples are ready. Save the item.',
+  };
+  String itemTaught(String name) => _hi
+      ? '$name सहेजा गया। अगली बार $name खोजो कहें।'
+      : '$name is ready to find. Say Find $name, or choose it under My items.';
+  String findingItem(String name) =>
+      _hi ? '$name खोज रहे हैं' : 'Finding $name';
   String searchingItem(SearchTarget item) => _hi
-      ? '${item.hindi} की तलाश शुरू। फ़ोन धीरे-धीरे घुमाएँ।'
-      : 'Looking for your ${item.english.toLowerCase()}. Sweep the phone slowly.';
+      ? '${item.hindi} की तलाश शुरू। कैमरा सतह की ओर रखें और धीरे-धीरे घुमाएँ।'
+      : 'Looking for your ${item.english.toLowerCase()}. Aim at the surface and sweep slowly.';
+  String searchingNamedItem(String name) => _hi
+      ? '$name की तलाश शुरू। कैमरा सतह की ओर रखें और धीरे-धीरे घुमाएँ।'
+      : 'Looking for $name. Aim at the surface and sweep slowly.';
+  String get itemSearchHint => _hi
+      ? 'फ़ोन थोड़ी देर स्थिर रखें, फिर कैमरे का कोण थोड़ा बदलें।'
+      : 'Hold the phone still for a moment, then try another angle.';
+  String get itemSearchUnavailable => _hi
+      ? 'चीज़ खोजने की सुविधा अभी उपलब्ध नहीं है। फिर से कोशिश करें।'
+      : 'Item search is unavailable right now. Try again.';
   String itemNotSeen(SearchTarget item) => _hi
       ? 'खोज पूरी हुई। ${item.hindi} का पता नहीं चला।'
       : 'Search finished. I couldn’t spot your ${item.english.toLowerCase()}.';
+  String namedItemNotSeen(String name) => _hi
+      ? 'खोज पूरी हुई। $name का पता नहीं चला।'
+      : 'Search finished. I couldn’t spot $name.';
+  String personalItemFound(
+    String name,
+    ObjectDirection? direction,
+  ) => switch (direction) {
+    ObjectDirection.left =>
+      _hi ? 'बाईं ओर $name जैसा दिख रहा है।' : 'Match for $name on your left.',
+    ObjectDirection.right =>
+      _hi ? 'दाईं ओर $name जैसा दिख रहा है।' : 'Match for $name on your right.',
+    _ => _hi ? 'कैमरे में $name जैसा दिख रहा है।' : 'Match for $name in view.',
+  };
   String get stopSearch => _hi ? 'खोज बंद करें' : 'Stop search';
   String get searchStopped => _hi ? 'खोज बंद।' : 'Search stopped.';
 
   String get objectHelp => _hi
-      ? 'विवरण सुनने के लिए दो बार टैप करें। खोजने के लिए चीज़ खोजें चुनें। आवाज़ से ऑटो विवरण चालू या ऑटो विवरण बंद कहें। मोड बदलने के लिए दाएँ या बाएँ स्वाइप करें।'
-      : 'Double tap for a description. Choose Find an item to start a search. Hold volume down and say automatic descriptions on or automatic descriptions off. Swipe sideways to change mode.';
+      ? 'विवरण के लिए दो बार टैप करें। खोजने के लिए चीज़ खोजें चुनें या चाबी खोजो कहें। अपनी चीज़ के लिए नई चीज़ सिखाएँ चुनें। आवाज़ से ऑटो विवरण चालू या बंद कहें। मोड बदलने के लिए दाएँ या बाएँ स्वाइप करें।'
+      : 'Double tap for a description. Tap Find an item or say Find my keys. To add your own item, choose Teach an item. You can also say Automatic descriptions on or off. Swipe sideways to change mode.';
 
   String autoDescriptions(bool enabled) => _hi
       ? (enabled ? 'ऑटो विवरण चालू' : 'ऑटो विवरण बंद')

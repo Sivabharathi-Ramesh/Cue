@@ -21,9 +21,9 @@ class ObjectDetectService {
 
   static final ObjectDetectService instance = ObjectDetectService._();
 
-  /// Bundled model path.
+  /// A new filename lets the plugin refresh the model on existing installs.
   static const String modelPath =
-      'assets/models/yoloe26s_everyday_w8a32.tflite';
+      'assets/models/yoloe26s_everyday_v3_w8a32.tflite';
 
   /// Below this, a box is almost always background clutter.
   static const double _minArea = 0.008;
@@ -37,10 +37,22 @@ class ObjectDetectService {
   bool _usingGpu = true;
 
   /// Loads the model before the object mode is needed.
-  Future<void> warmUp() => _ensureLoaded().then((_) {});
+  Future<void> warmUp() async {
+    try {
+      await _ensureLoaded();
+    } catch (error) {
+      if (kDebugMode) debugPrint('Object model warm-up failed: $error');
+    }
+  }
 
-  Future<void> _ensureLoaded() {
-    return _loading ??= _load();
+  Future<void> _ensureLoaded() async {
+    if (_yolo != null) return;
+    final pending = _loading ??= _load();
+    try {
+      await pending;
+    } finally {
+      if (identical(_loading, pending)) _loading = null;
+    }
   }
 
   Future<void> _load() async {
@@ -61,8 +73,17 @@ class ObjectDetectService {
       task: YOLOTask.detect,
       // A blind user needs the latency before they finish waiting.
       useGpu: useGpu,
+      // Keep the replacement CPU instance independent of the GPU instance.
+      useMultiInstance: true,
     );
-    await yolo.loadModel();
+    try {
+      if (!await yolo.loadModel()) {
+        throw StateError('Could not load the object detector');
+      }
+    } catch (_) {
+      await yolo.dispose();
+      rethrow;
+    }
     if (kDebugMode) debugPrint('live: model loaded gpu=$useGpu');
     return yolo;
   }
@@ -86,10 +107,17 @@ class ObjectDetectService {
     SearchTarget? searchTarget,
   }) async {
     if (jpeg.length < 32) return const <DetectedObject>[];
-    await _ensureLoaded();
-
     try {
-      final raw = await _predict(jpeg);
+      await _ensureLoaded();
+      final raw = await _predict(
+        jpeg,
+        confidenceThreshold: searchTarget == null
+            ? 0.40
+            : searchCandidateConfidence(searchTarget),
+        // A table or a competing label can overlap a key. Keep more of
+        // these candidates for the key finder to confirm across frames.
+        iouThreshold: searchTarget == SearchTarget.keys ? 0.88 : 0.45,
+      );
       if (kDebugMode) {
         debugPrint(
           'live: plugin accel=${raw['accelerator']} '
@@ -120,9 +148,16 @@ class ObjectDetectService {
 
       if (searchTarget != null) {
         // Inspect every candidate before general scene ranking and size filters.
-        return rawObjects.where((item) =>
-            isSearchCandidate(item, searchTarget) &&
-            !resolveObjectAmbiguity(item, rawObjects).isAmbiguous).toList();
+        final rivals = rawObjects.where(
+          (item) => !searchTarget.labels.contains(item.name),
+        );
+        return rawObjects
+            .where(
+              (item) =>
+                  isSearchCandidate(item, searchTarget) &&
+                  !resolveObjectAmbiguity(item, rivals).isAmbiguous,
+            )
+            .toList();
       }
 
       final objects = rawObjects.where(_plausible).toList();
@@ -182,6 +217,7 @@ class ObjectDetectService {
       final nearest = chosen.take(maxObjects).toList(growable: false);
       return await _withColours(nearest, jpeg);
     } catch (_) {
+      if (searchTarget != null) rethrow;
       // A failed detection is not a reason to disrupt the session; the next
       // pass gets another chance.
       return const <DetectedObject>[];
@@ -229,21 +265,27 @@ class ObjectDetectService {
 
   /// Runs inference, retreating to the CPU once if the GPU delegate accepts
   /// the model at load time but fails on the first real image.
-  Future<Map<String, dynamic>> _predict(Uint8List jpeg) async {
+  Future<Map<String, dynamic>> _predict(
+    Uint8List jpeg, {
+    required double confidenceThreshold,
+    required double iouThreshold,
+  }) async {
+    final yolo = _yolo!;
     try {
-      return await _yolo!.predict(
+      return await yolo.predict(
         jpeg,
-        confidenceThreshold: 0.40,
-        iouThreshold: 0.45,
+        confidenceThreshold: confidenceThreshold,
+        iouThreshold: iouThreshold,
       );
     } catch (_) {
       if (!_usingGpu) rethrow;
       _yolo = await _create(useGpu: false);
       _usingGpu = false;
+      await yolo.dispose();
       return _yolo!.predict(
         jpeg,
-        confidenceThreshold: 0.40,
-        iouThreshold: 0.45,
+        confidenceThreshold: confidenceThreshold,
+        iouThreshold: iouThreshold,
       );
     }
   }

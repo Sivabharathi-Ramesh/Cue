@@ -49,6 +49,8 @@ kotlin {
 }
 
 dependencies {
+    implementation("com.google.ai.edge.litert:litert:2.3.0")
+
     // Hindi OCR. google_mlkit_text_recognition declares the non-Latin models
     // as compile-only, so the app itself must package the Devanagari model.
     // Without this line TextRecognitionScript.devanagari fails at runtime and

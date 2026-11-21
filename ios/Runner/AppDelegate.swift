@@ -1,6 +1,7 @@
 import AVFoundation
 import Flutter
 import UIKit
+import Vision
 
 @main
 @objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
@@ -9,6 +10,7 @@ import UIKit
   private let audioEngine = AVAudioEngine()
   private let playerNode = AVAudioPlayerNode()
   private var engineStarted = false
+  private let personalVision = DispatchQueue(label: "cue.personal_items", qos: .userInitiated)
 
   override func application(
     _ application: UIApplication,
@@ -20,15 +22,18 @@ import UIKit
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
 
-    // Wire up the cue/feedback channel so the Dart Feedback class gets real
-    // sine-wave tones on iOS instead of falling back to a system click.
-    guard
-      let controller = engineBridge.pluginRegistry as? FlutterViewController
-    else { return }
-
+    let messenger = engineBridge.applicationRegistrar.messenger()
+    let personalItems = FlutterMethodChannel(name: "cue/personal_items", binaryMessenger: messenger)
+    personalItems.setMethodCallHandler { [weak self] call, result in
+      guard let self else {
+        result(FlutterError(code: "personal_vision", message: nil, details: nil))
+        return
+      }
+      self.describePersonalRegions(call, result: result)
+    }
     let channel = FlutterMethodChannel(
       name: "cue/feedback",
-      binaryMessenger: controller.binaryMessenger
+      binaryMessenger: messenger
     )
 
     channel.setMethodCallHandler { [weak self] call, result in
@@ -59,6 +64,71 @@ import UIKit
         pan: Float(pan)
       )
       result(nil)
+    }
+  }
+
+  private enum PersonalVisionError: Error { case image, region, output }
+
+  private func describePersonalRegions(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+    if call.method == "profileDirectory" {
+      do {
+        let support = try FileManager.default.url(
+          for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true
+        )
+        var directory = support.appendingPathComponent("CuePersonalItems", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        var values = URLResourceValues()
+        values.isExcludedFromBackup = true
+        try directory.setResourceValues(values)
+        result(directory.path)
+      } catch {
+        result(FlutterError(code: "personal_storage", message: error.localizedDescription, details: nil))
+      }
+      return
+    }
+    guard call.method == "describe" else {
+      result(FlutterMethodNotImplemented)
+      return
+    }
+    guard
+      let args = call.arguments as? [String: Any],
+      let jpeg = args["jpeg"] as? FlutterStandardTypedData,
+      let regions = args["regions"] as? [[Double]],
+      !regions.isEmpty
+    else {
+      result(FlutterError(code: "invalid_image", message: nil, details: nil))
+      return
+    }
+    personalVision.async {
+      do {
+        guard let image = UIImage(data: jpeg.data)?.cgImage else { throw PersonalVisionError.image }
+        let vectors = try regions.map { region -> FlutterStandardTypedData in
+          guard region.count == 4, region.allSatisfy({ (0...1).contains($0) }) else {
+            throw PersonalVisionError.region
+          }
+          let left = (region[0] * Double(image.width)).rounded()
+          let top = (region[1] * Double(image.height)).rounded()
+          let right = (region[2] * Double(image.width)).rounded()
+          let bottom = (region[3] * Double(image.height)).rounded()
+          let rect = CGRect(x: left, y: top, width: right - left, height: bottom - top)
+          guard !rect.isEmpty, let crop = image.cropping(to: rect) else { throw PersonalVisionError.region }
+          let request = VNGenerateImageFeaturePrintRequest()
+          request.revision = VNGenerateImageFeaturePrintRequestRevision1
+          request.imageCropAndScaleOption = .scaleFill
+          try VNImageRequestHandler(cgImage: crop).perform([request])
+          guard let observation = request.results?.first else { throw PersonalVisionError.output }
+          switch observation.elementType {
+          case .float: return FlutterStandardTypedData(float32: observation.data)
+          case .double: return FlutterStandardTypedData(float64: observation.data)
+          default: throw PersonalVisionError.output
+          }
+        }
+        DispatchQueue.main.async { result(["format": "vision-feature-print-v1", "vectors": vectors]) }
+      } catch {
+        DispatchQueue.main.async {
+          result(FlutterError(code: "personal_vision", message: error.localizedDescription, details: nil))
+        }
+      }
     }
   }
 

@@ -449,12 +449,20 @@ const Set<String> _tallClasses = {
   'thermos',
 };
 
-/// A smaller box is allowed during a deliberate search. Keep the strict
-/// confidence requirement; the search also checks agreement across frames.
+/// The finder confirms repeated observations before reporting a position.
+/// The key head has a lower score range, especially for a single small key.
+double searchCandidateConfidence(SearchTarget target) =>
+    target == SearchTarget.keys ? 0.24 : 0.34;
+
+/// A deliberate search admits small boxes and moderate target scores so a
+/// tiny, well-localised item can build evidence across multiple frames.
 bool isSearchCandidate(DetectedObject item, SearchTarget target) =>
     target.labels.contains(item.name) &&
+    !item.isAmbiguous &&
+    item.confidence >= searchCandidateConfidence(target) &&
+    item.confidence <= 1 &&
+    item.box.isFinite &&
     item.box.width > 0 &&
     item.box.height > 0 &&
-    item.area >= 0.001 &&
-    item.area <= 0.94 &&
-    isConfidentDetection(item, lenient: false);
+    item.area >= 0.00025 &&
+    item.area <= 0.94;
