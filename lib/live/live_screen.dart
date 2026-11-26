@@ -4,6 +4,7 @@ import 'package:camera/camera.dart';
 // Flutter's Material library also defines a `Feedback` class (the haptic
 // helper). Cue's own audio/haptic layer is the one this screen means.
 import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart' show DragStartBehavior;
 import 'package:flutter/material.dart' hide Feedback;
 import 'package:flutter/semantics.dart';
 import 'package:flutter/services.dart';
@@ -56,6 +57,9 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
   late final FramePipeline _pipeline;
   final _itemStore = PersonalItemStore.instance;
   final _teachCamera = ValueNotifier<CameraController?>(null);
+  final _itemShortcut = ValueNotifier(0);
+  bool get _hasVolumeShortcut =>
+      defaultTargetPlatform == TargetPlatform.android;
   Completer<CameraFrame?>? _teachFrame;
   bool _finderOpen = false;
   bool _teaching = false;
@@ -79,6 +83,7 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
 
   /// Whether press-to-talk is currently listening.
   bool _listening = false;
+  bool _helpSpeaking = false;
 
   /// True while a "where am I" lookup is running, so repeated partial
   /// recognitions cannot stack several slow lookups.
@@ -121,6 +126,7 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
 
   StreamSubscription<double>? _lightSubscription;
   StreamSubscription<bool>? _proximitySubscription;
+  late final StreamSubscription<void> _helpShakeSubscription;
   final _lightingSampler = FrameSampler();
   DateTime? _lastLightingFrame;
   double? _ambientLux;
@@ -159,6 +165,7 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
   int _maxPointers = 0;
   DateTime? _pointersDownAt;
   bool _pointersMoved = false;
+  Offset _swipeStart = Offset.zero;
 
   /// Whether the preview and the status panel are currently visible.
   ///
@@ -192,17 +199,18 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
     )..automaticDescriptions = ObjectPreferences.instance.automatic;
     unawaited(Feedback.instance.init());
     _keyChannel.setMethodCallHandler(_onHardwareKey);
+    _helpShakeSubscription = MotionMonitor.instance.helpShakes.listen(
+      (_) => unawaited(_help(fromShake: true)),
+    );
     unawaited(_startSensors());
     unawaited(_prepareAndStart());
 
-    // FR-04 / section 7: a soft tick every two seconds while searching.
-    // Once a result has been read, the tick stops: an endless beep in the ear
-    // is noise, and the aiming cues still speak up if the text is lost.
+    // The tick identifies an active item search or an idle banknote scan.
     _searchTick = Timer.periodic(const Duration(seconds: 2), (_) {
       if (!mounted) return;
       final scanning =
           _pipeline.isSearchingForItem ||
-          (_pipeline.interpretation != Interpretation.object &&
+          (_pipeline.interpretation == Interpretation.banknote &&
               _lastResult.isEmpty);
       if (_phase == LivePhase.searching &&
           scanning &&
@@ -219,11 +227,13 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
   void dispose() {
     _finishTeachFrame(null);
     _teachCamera.dispose();
+    _itemShortcut.dispose();
     _pipeline.reset();
     _searchTick?.cancel();
     _previewTimer?.cancel();
     _lightSubscription?.cancel();
     _proximitySubscription?.cancel();
+    unawaited(_helpShakeSubscription.cancel());
     unawaited(MotionMonitor.instance.stop());
     unawaited(DeviceSensors.instance.stop());
     WidgetsBinding.instance.removeObserver(this);
@@ -435,6 +445,7 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
   /// withdrew the request.
   Future<void> _handleNeverMind() async {
     _pipeline.stopItemSearch();
+    _pipeline.cancelRequestedScans();
     await AudioBus.instance.stop();
     await AudioBus.instance.say(
       _strings.neverMind,
@@ -587,6 +598,12 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
         now.difference(_torchOnSince!) >= _torchMaxOn) {
       _torchTimedOut = true;
       unawaited(_setTorch(false, autoOff: true));
+      return;
+    }
+
+    if (_pipeline.isWatchingScreen) {
+      _darkSince = null;
+      _brightSince = null;
       return;
     }
 
@@ -858,7 +875,9 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
       if (_developerMode) return;
       // Do not go dark in the middle of a reading: a sighted helper following
       // the caption gets the whole sentence, then the screen fades.
-      if (AudioBus.instance.reading.value || _pipeline.isSearchingForItem) {
+      if (AudioBus.instance.reading.value ||
+          _pipeline.isSearchingForItem ||
+          _pipeline.isWatchingScreen) {
         _showPreview();
         return;
       }
@@ -882,22 +901,28 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
       return;
     }
 
-    // Explain the physical talk key once, on Android, then stop repeating it.
-    final intro =
-        defaultTargetPlatform == TargetPlatform.android &&
-        await voiceIntroNeeded();
+    final intro = await voiceIntroNeeded();
     if (!mounted || token != _startToken || _phase != LivePhase.searching) {
       return;
     }
 
-    await AudioBus.instance.say(
-      intro ? _strings.lookingIntro : _strings.looking,
+    final audio = AudioBus.instance;
+    if (_pipeline.isCheckingForText || audio.isSpeaking || audio.isMuted) {
+      return;
+    }
+    final introduceTalkKey = intro && _hasVolumeShortcut;
+    final readyMessage = _pipeline.interpretation == Interpretation.text
+        ? '${_strings.textModeAnnouncement}${introduceTalkKey ? ' ${_strings.helpHowTo}' : ''}'
+        : (introduceTalkKey ? _strings.lookingIntro : _strings.looking);
+    await audio.say(
+      intro ? '$readyMessage ${_strings.shakeForHelp}' : readyMessage,
       priority: SpeechPriority.info,
     );
     if (intro) unawaited(markVoiceIntroSeen());
   }
 
   Future<void> _pause({bool announce = true}) async {
+    _pipeline.cancelRequestedScans();
     _startToken++;
     _starting = false;
     _previewTimer?.cancel();
@@ -948,7 +973,7 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
   /// The one activation gesture. With TalkBack on, a double-tap on the focused
   /// full-screen node arrives here as a semantic tap; without TalkBack, the
   /// GestureDetector's double-tap does the same thing.
-  void _activate() {
+  void _activate({bool wholeScene = false}) {
     if (_finderOpen || _teaching) return;
     if (_listening) {
       // A second double-tap while listening cancels the listen instead of
@@ -973,13 +998,14 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
         return;
       }
 
-      _pipeline.requestManualRead();
+      final started = _pipeline.requestManualRead(wholeScene: wholeScene);
       _showPreview();
-      if (_pipeline.interpretation == Interpretation.text &&
+      if (started &&
+          _pipeline.interpretation == Interpretation.text &&
           !AudioBus.instance.speaking.value) {
         unawaited(
           AudioBus.instance.say(
-            _strings.readingNow,
+            _strings.checkingForText,
             priority: SpeechPriority.info,
           ),
         );
@@ -992,9 +1018,31 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
     unawaited(AudioBus.instance.repeatLast());
   }
 
-  void _announceFinder(String message) {
-    unawaited(AudioBus.instance.say(message, priority: SpeechPriority.answer));
+  void _describeInDetail() {
+    if (_phase != LivePhase.searching ||
+        _finderOpen ||
+        _teaching ||
+        _listening) {
+      return;
+    }
+    if (!_pipeline.requestObjectDetails()) return;
+    unawaited(Feedback.instance.gesture());
+    final audio = AudioBus.instance;
+    if (audio.hasReading && !audio.readingPaused) {
+      unawaited(audio.pauseReading());
+    }
+    _showPreview();
+    if (!audio.isSpeaking) {
+      unawaited(audio.say(_strings.checkingObjectDetails));
+    }
   }
+
+  void _announceFinder(String message) {
+    unawaited(_speakFinder(message));
+  }
+
+  Future<void> _speakFinder(String message) =>
+      AudioBus.instance.say(message, priority: SpeechPriority.answer);
 
   bool _finderReady() {
     if (_phase == LivePhase.searching &&
@@ -1005,11 +1053,11 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
     return false;
   }
 
-  Future<void> _chooseItem({String initialName = ''}) async {
+  Future<void> _chooseItem() async {
     if (_finderOpen || _teaching || !_finderReady()) return;
     setState(() {
       _finderOpen = true;
-      if (initialName.isEmpty && _pipeline.isSearchingForItem) {
+      if (_pipeline.isSearchingForItem) {
         _lastResult = _strings.searchStopped;
       }
       _pipeline.reset();
@@ -1033,12 +1081,17 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
           sayName: _listenForItemName,
           removeItem: _itemStore.forget,
           announce: _announceFinder,
-          initialName: initialName,
+          volumeShortcut: _hasVolumeShortcut ? _itemShortcut : null,
           storageUnavailable: storageUnavailable,
         ),
       );
-      if (initialName.isNotEmpty) _announceFinder(_strings.unrecognizedItem);
+      _announceFinder(
+        _strings.finderPrompt(hasVolumeShortcut: _hasVolumeShortcut),
+      );
       request = await dialog;
+      if (request == null && mounted && !_listening) {
+        await AudioBus.instance.stop();
+      }
     } finally {
       _finderOpen = false;
       if (mounted && _listening) _cancelVoice();
@@ -1081,15 +1134,16 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
     } else if (common != null) {
       _findItem(common);
     } else {
-      final message = _strings.unrecognizedItem;
+      _pipeline.stopItemSearch();
+      final message = _strings.findItemNextStep(request.name);
       _onResult(message);
-      await _chooseItem(initialName: request.name);
+      await _speakFinder(message);
     }
   }
 
   void _findItem(SearchTarget target) {
     if (!_finderReady()) return;
-    unawaited(ObjectDetectService.instance.warmUp());
+    unawaited(ObjectDetectService.everyday.warmUp());
     _startFinding(
       _strings.searchingItem(target),
       () => _pipeline.startItemSearch(target),
@@ -1128,10 +1182,14 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
           sayName: _listenForItemName,
           capture: _capturePersonalExample,
           save: _itemStore.save,
-          announce: _announceFinder,
+          announce: _speakFinder,
+          volumeShortcut: _hasVolumeShortcut ? _itemShortcut : null,
           initialName: name,
         ),
       );
+      if (saved == null && mounted && !_listening) {
+        await AudioBus.instance.stop();
+      }
     } catch (_) {
       if (mounted) _announceFinder(_strings.itemStoreError);
     } finally {
@@ -1168,6 +1226,9 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
           if (identical(_teachFrame, pending)) _teachFrame = null;
         });
     if (frame == null) throw StateError('No teaching frame received');
+    if (_lightingSampler.sample(frame.image).isTooDark) {
+      throw const UnclearPersonalExample(tooDark: true);
+    }
     final rotation = rotationDegrees(
       frame.description,
       frame.deviceOrientation,
@@ -1184,6 +1245,7 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
   }
 
   void _stopSpeech() {
+    _pipeline.cancelRequestedScans();
     if (_pipeline.stopItemSearch()) {
       setState(() => _lastResult = _strings.searchStopped);
       unawaited(
@@ -1194,20 +1256,60 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
       );
       return;
     }
+    if (_pipeline.stopScreenWatch()) {
+      final message = _strings.screenWatchStopped;
+      _onResult(message);
+      unawaited(
+        AudioBus.instance.say(message, priority: SpeechPriority.answer),
+      );
+      return;
+    }
     unawaited(Feedback.instance.gesture());
     unawaited(AudioBus.instance.stop());
+    if (AudioBus.instance.readingPaused) setState(() {});
   }
 
-  void _help() {
+  bool get _canSpeakHelp =>
+      mounted &&
+      WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed &&
+      !_finderOpen &&
+      !_teaching &&
+      !_listening &&
+      !AudioBus.instance.isMuted &&
+      ModalRoute.of(context)?.isCurrent == true;
+
+  Future<void> _help({bool fromShake = false}) async {
+    if (_helpSpeaking || !_canSpeakHelp) {
+      if (fromShake) MotionMonitor.instance.rearmHelpShake();
+      return;
+    }
+    _helpSpeaking = true;
+    _pipeline.cancelRequestedScans();
     unawaited(Feedback.instance.gesture());
-    unawaited(
-      AudioBus.instance.say(
-        _pipeline.interpretation == Interpretation.object
-            ? _strings.objectHelp
-            : _strings.help,
-        priority: SpeechPriority.navigation,
-      ),
-    );
+
+    final audio = AudioBus.instance;
+    final findingItem = _pipeline.isSearchingForItem;
+    try {
+      final paused = await audio.pauseReading();
+      if (!_canSpeakHelp) {
+        if (fromShake) MotionMonitor.instance.rearmHelpShake();
+        return;
+      }
+      if (paused) {
+        audio.takeReadingPauseHint();
+        setState(() {});
+      }
+      final message = _pipeline.interpretation == Interpretation.object
+          ? _strings.objectHelp
+          : _strings.help;
+      await audio.say(
+        paused ? '$message ${_strings.resumeHint}.' : message,
+        // A successful item match can still take over the voice.
+        priority: findingItem ? SpeechPriority.answer : SpeechPriority.help,
+      );
+    } finally {
+      _helpSpeaking = false;
+    }
   }
 
   /// Steps the voice speed and confirms the change by speaking at the new
@@ -1265,7 +1367,11 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
   }
 
   /// Switches to [next] and announces the result.
-  Future<void> _setInterpretation(Interpretation next) async {
+  Future<void> _setInterpretation(
+    Interpretation next, {
+    bool watchScreen = false,
+  }) async {
+    _pipeline.cancelRequestedScans();
     unawaited(Feedback.instance.gesture());
     await AudioBus.instance.stop();
 
@@ -1280,10 +1386,22 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
       // Load the detector when the mode is chosen, not at launch: warming a
       // 10 MB model on a cold start competes with the camera and OCR, and
       // most sessions never leave text mode.
-      unawaited(ObjectDetectService.instance.warmUp());
+      final detector = _pipeline.automaticDescriptions
+          ? ObjectDetectService.everyday
+          : ObjectDetectService.instance;
+      unawaited(detector.warmUp());
     }
+    if (watchScreen && _torchOn) await _setTorch(false);
     if (!mounted) return;
-    setState(() => _pipeline.setInterpretation(next));
+    setState(() {
+      if (watchScreen) {
+        _pipeline.startScreenWatch();
+        _lastResult = '';
+      } else {
+        _pipeline.setInterpretation(next);
+        _pipeline.stopScreenWatch();
+      }
+    });
     AudioBus.instance.forgetLastResult();
     _showPreview();
 
@@ -1294,20 +1412,19 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
     }
 
     final firstVisit = ObjectPreferences.instance.firstVisit(next.name);
-    final announcement = !firstVisit
-        ? '${_strings.modeName(next.label)} ${_language.isHindi ? 'मोड।' : 'mode.'}'
-        : switch (next) {
-            Interpretation.text => _strings.textModeAnnouncement,
-            Interpretation.object => _strings.objectModeAnnouncement,
-            Interpretation.banknote => _strings.banknoteModeAnnouncement,
-            Interpretation.screen => _strings.notBuilt(
-              _strings.modeName(next.label),
-            ),
-          };
-    await AudioBus.instance.say(
-      announcement,
-      priority: SpeechPriority.navigation,
-    );
+    final message = watchScreen
+        ? _strings.textScreenGuide
+        : (!firstVisit
+              ? '${_strings.modeName(next.label)} ${_language.isHindi ? 'मोड।' : 'mode.'}'
+              : switch (next) {
+                  Interpretation.text => _strings.textModeAnnouncement,
+                  Interpretation.object => _strings.objectModeAnnouncement,
+                  Interpretation.banknote => _strings.banknoteModeAnnouncement,
+                  Interpretation.screen => _strings.notBuilt(
+                    _strings.modeName(next.label),
+                  ),
+                });
+    await AudioBus.instance.say(message, priority: SpeechPriority.navigation);
   }
 
   void _setAutoDescriptions(bool enabled) {
@@ -1468,7 +1585,10 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
     debugPrint('voice: key ${call.method}');
     switch (call.method) {
       case 'talkStart':
-        if (_finderOpen || _teaching) return null;
+        if (_finderOpen || _teaching) {
+          _itemShortcut.value++;
+          return null;
+        }
         _talkKeyHeld = true;
         // A press while the previous listen is still ending is the user
         // retrying. Ignoring it made Cue feel dead for up to a second after a
@@ -1476,6 +1596,7 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
         if (_listening) _restartVoice();
         unawaited(_listenForCommand());
       case 'talkEnd':
+        if (!_talkKeyHeld) return null;
         _talkKeyHeld = false;
         unawaited(VoiceCommandService.instance.finishListening());
     }
@@ -1535,6 +1656,7 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
 
   Future<VoiceCommandResult?> _listen({bool dictation = false}) async {
     if (_listening) return null;
+    _pipeline.cancelRequestedScans();
     final token = ++_listenToken;
     final startedByKey = _talkKeyHeld && !dictation;
     setState(() => _listening = true);
@@ -1641,7 +1763,7 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
       case VoiceCommand.startOver:
         unawaited(_startOver());
       case VoiceCommand.help:
-        _help();
+        await _help();
       case VoiceCommand.slower:
         unawaited(_changeSpeed(faster: false));
       case VoiceCommand.faster:
@@ -1649,10 +1771,15 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
       case VoiceCommand.textMode:
         unawaited(_setInterpretation(Interpretation.text));
       case VoiceCommand.findKeys:
+      case VoiceCommand.findCharger:
       case VoiceCommand.findPhone:
       case VoiceCommand.findGlasses:
       case VoiceCommand.findPen:
       case VoiceCommand.findBottle:
+      case VoiceCommand.findWallet:
+      case VoiceCommand.findRemote:
+      case VoiceCommand.findComb:
+      case VoiceCommand.findMug:
         _findItem(result.command.target!);
       case VoiceCommand.objectMode:
         unawaited(_setInterpretation(Interpretation.object));
@@ -1663,7 +1790,7 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
       case VoiceCommand.autoDescriptionsOff:
         _setAutoDescriptions(false);
       case VoiceCommand.screenMode:
-        unawaited(_setInterpretation(Interpretation.screen));
+        unawaited(_setInterpretation(Interpretation.text, watchScreen: true));
       case VoiceCommand.torchOn:
         unawaited(_torchFromVoice(true));
       case VoiceCommand.torchOff:
@@ -1733,6 +1860,10 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
         // whatever was in view before the user moved the phone, which is the
         // one thing a "what is this?" question is not asking about.
         _activate();
+      case VoiceCommand.describeScene:
+        _activate(wholeScene: true);
+      case VoiceCommand.describeDetail:
+        _describeInDetail();
       case VoiceCommand.showPreview:
         _showPreview();
         unawaited(
@@ -1848,19 +1979,26 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
     }
   }
 
-  void _onVerticalDragEnd(DragEndDetails details) {
-    final velocity = details.primaryVelocity ?? 0;
-    if (velocity > 0) {
-      _repeat();
-    } else if (velocity < 0) {
-      _stopSpeech();
-    }
+  void _onSwipeStart(DragStartDetails details) {
+    _swipeStart = details.globalPosition;
   }
 
-  void _onHorizontalDragEnd(DragEndDetails details) {
-    final velocity = details.primaryVelocity ?? 0;
-    if (velocity == 0) return;
-    unawaited(_changeInterpretation(forward: velocity > 0));
+  void _onSwipeEnd(DragEndDetails details, Axis axis) {
+    final travel = details.globalPosition - _swipeStart;
+    final distance = axis == Axis.horizontal ? travel.dx : travel.dy;
+    // Flutter reports zero velocity when a slow swipe ends with a pause.
+    // Keep quick flicks working and also honour a deliberate drag.
+    final direction = distance.abs() >= 36
+        ? distance
+        : details.primaryVelocity ?? 0;
+    if (direction == 0) return;
+    if (axis == Axis.horizontal) {
+      unawaited(_changeInterpretation(forward: direction > 0));
+    } else if (direction > 0) {
+      _repeat();
+    } else {
+      _stopSpeech();
+    }
   }
 
   void _onResult(String text) {
@@ -1875,11 +2013,14 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
     if (_pipeline.activeItemName case final name?) {
       return _strings.findingItem(name);
     }
+    if (_pipeline.isWatchingScreen) return _strings.watchingScreen;
     switch (_phase) {
       case LivePhase.starting:
         return _strings.semanticsStarting;
       case LivePhase.searching:
-        return _strings.semanticsLive;
+        return _pipeline.interpretation == Interpretation.text
+            ? _strings.semanticsText
+            : _strings.semanticsLive;
       case LivePhase.paused:
         return _strings.semanticsPaused;
       case LivePhase.error:
@@ -1895,8 +2036,10 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
         if (_pipeline.activeItemName case final name?) {
           return _strings.findingItem(name);
         }
-        return AudioBus.instance.readingPaused
-            ? _strings.readingPausedLabel
+        if (_pipeline.isWatchingScreen) return _strings.watchingScreen;
+        if (AudioBus.instance.readingPaused) return _strings.readingPausedLabel;
+        return _pipeline.interpretation == Interpretation.text
+            ? _strings.readyToRead
             : _strings.cueLooking;
       case LivePhase.paused:
         return _strings.pausedLabel;
@@ -1913,6 +2056,19 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
         controller.value.isInitialized &&
         _phase == LivePhase.searching;
     final finding = _pipeline.isSearchingForItem;
+    final textMode = _pipeline.interpretation == Interpretation.text;
+    final readActionLabel = AudioBus.instance.readingPaused
+        ? _strings.resumeReading
+        : _strings.actionReadNow;
+    final (
+      String buttonLabel,
+      IconData buttonIcon,
+      VoidCallback buttonAction,
+    ) = switch ((finding, textMode)) {
+      (true, _) => (_strings.stopSearch, Icons.stop, _stopSpeech),
+      (_, true) => (readActionLabel, Icons.text_fields, _activate),
+      _ => (_strings.findItem, Icons.search, _chooseItem),
+    };
 
     return Scaffold(
       backgroundColor: Colors.black,
@@ -1924,15 +2080,9 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
                 alignment: Alignment.center,
                 heightFactor: 1,
                 child: FilledButton.icon(
-                  onPressed: _listening
-                      ? null
-                      : finding
-                      ? _stopSpeech
-                      : _chooseItem,
-                  icon: Icon(finding ? Icons.stop : Icons.search),
-                  label: Text(
-                    finding ? _strings.stopSearch : _strings.findItem,
-                  ),
+                  onPressed: _listening ? null : buttonAction,
+                  icon: Icon(buttonIcon),
+                  label: Text(buttonLabel),
                 ),
               ),
             )
@@ -1940,16 +2090,24 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
       body: Semantics(
         container: true,
         label: _semanticsLabel,
-        hint: _pipeline.interpretation == Interpretation.object
-            ? _strings.objectTapHint
-            : _strings.semanticsHint,
+        hint: switch (_pipeline.interpretation) {
+          Interpretation.object => _strings.objectTapHint,
+          Interpretation.text when AudioBus.instance.readingPaused =>
+            _strings.resumeHint,
+          Interpretation.text when _phase == LivePhase.searching =>
+            _strings.textTapHint,
+          _ => _strings.semanticsHint,
+        },
         onTap: _activate,
         customSemanticsActions: <CustomSemanticsAction, VoidCallback>{
           CustomSemanticsAction(
             label: _pipeline.interpretation == Interpretation.object
                 ? _strings.describeNow
-                : _strings.actionReadNow,
+                : readActionLabel,
           ): _activate,
+          if (showPreview)
+            CustomSemanticsAction(label: _strings.describeInDetail):
+                _describeInDetail,
           if (_pipeline.interpretation == Interpretation.object)
             CustomSemanticsAction(
               label: _strings.autoDescriptions(
@@ -1963,6 +2121,21 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
             ): finding
                 ? _stopSpeech
                 : _chooseItem,
+          if (showPreview &&
+              !finding &&
+              _pipeline.interpretation == Interpretation.object)
+            CustomSemanticsAction(label: _strings.teachItem): () =>
+                unawaited(_teachItem('')),
+          if (showPreview && _pipeline.interpretation == Interpretation.text)
+            CustomSemanticsAction(
+              label: _pipeline.isWatchingScreen
+                  ? _strings.stopWatchingScreen
+                  : _strings.watchScreen,
+            ): _pipeline.isWatchingScreen
+                ? _stopSpeech
+                : () => unawaited(
+                    _setInterpretation(Interpretation.text, watchScreen: true),
+                  ),
           CustomSemanticsAction(label: _strings.actionRepeat): _repeat,
           CustomSemanticsAction(label: _strings.actionStop): _stopSpeech,
           CustomSemanticsAction(label: _strings.actionPauseResume):
@@ -1998,6 +2171,7 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
           CustomSemanticsAction(label: _strings.actionRight): () =>
               unawaited(_saySide(ObjectDirection.right)),
         },
+        onLongPress: _help,
         excludeSemantics: true,
         child: Listener(
           onPointerDown: _onPointerDown,
@@ -2006,10 +2180,14 @@ class _LiveScreenState extends State<LiveScreen> with WidgetsBindingObserver {
           onPointerCancel: _onPointerCancel,
           child: GestureDetector(
             behavior: HitTestBehavior.opaque,
+            dragStartBehavior: DragStartBehavior.down,
             onDoubleTap: _activate,
             onLongPress: _help,
-            onVerticalDragEnd: _onVerticalDragEnd,
-            onHorizontalDragEnd: _onHorizontalDragEnd,
+            onVerticalDragStart: _onSwipeStart,
+            onVerticalDragEnd: (details) => _onSwipeEnd(details, Axis.vertical),
+            onHorizontalDragStart: _onSwipeStart,
+            onHorizontalDragEnd: (details) =>
+                _onSwipeEnd(details, Axis.horizontal),
             child: Stack(
               fit: StackFit.expand,
               children: <Widget>[

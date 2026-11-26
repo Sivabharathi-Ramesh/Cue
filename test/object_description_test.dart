@@ -1,8 +1,10 @@
 import 'dart:ui';
 
 import 'package:cue/core/object_labels.dart';
+import 'package:cue/live/object_announcement_history.dart';
 import 'package:cue/vision/detected_object.dart';
 import 'package:cue/vision/object_colour.dart';
+import 'package:cue/vision/object_detect_service.dart';
 import 'package:cue/vision/object_tracker.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -26,6 +28,71 @@ DetectedObject objectAt(
 }
 
 void main() {
+  group('Object announcement history', () {
+    final start = DateTime(2026);
+
+    test('a spoken object stays quiet through a brief detection gap', () {
+      final history = ObjectAnnouncementHistory();
+      final chair = objectAt('chair', left: 0.1);
+      history.remember([chair], start);
+
+      expect(
+        history.observe([chair], start.add(const Duration(seconds: 4))),
+        contains(chair),
+      );
+      history.observe([], start.add(const Duration(seconds: 6)));
+      final returned = objectAt('chair', left: 0.12);
+      expect(
+        history.observe([returned], start.add(const Duration(seconds: 9))),
+        contains(returned),
+      );
+    });
+
+    test('a second chair on the same side is new information', () {
+      final history = ObjectAnnouncementHistory();
+      final chair = objectAt('chair', left: 0.05, width: 0.10);
+      final second = objectAt('chair', left: 0.24, width: 0.10);
+      history.remember([chair], start);
+      expect(chair.direction, second.direction);
+
+      final alreadySpoken = history.observe([
+        chair,
+        second,
+      ], start.add(const Duration(seconds: 3)));
+      expect(alreadySpoken, {chair});
+    });
+
+    test('a tracked chair stays quiet when its box shifts', () {
+      final history = ObjectAnnouncementHistory();
+      final tracker = ObjectTracker(passesToConfirm: 1, smoothing: 1);
+      final first = tracker.update([objectAt('chair', left: 0.05)]).single;
+      history.remember([first], start, identityOf: tracker.identityOf);
+
+      final shifted = tracker.update([objectAt('chair', left: 0.15)]).single;
+      expect(boxIou(first.box, shifted.box), lessThan(0.45));
+      expect(
+        history.observe(
+          [shifted],
+          start.add(const Duration(seconds: 3)),
+          identityOf: tracker.identityOf,
+        ),
+        {shifted},
+      );
+    });
+
+    test('a return after the cooldown or after a new scene can be spoken', () {
+      final history = ObjectAnnouncementHistory();
+      final chair = objectAt('chair');
+      history.remember([chair], start);
+      final later = start.add(const Duration(seconds: 7));
+      expect(history.observe([chair], later), isEmpty);
+
+      history.remember([chair], later);
+      history.reset();
+      expect(history.observe([chair], later), isEmpty);
+    });
+  });
+
   group('DetectedObject', () {
     test('a box on the left is reported to the left', () {
       final object = objectAt('chair', left: 0.05, width: 0.2);
@@ -312,53 +379,32 @@ void main() {
 
   group('isConfidentDetection', () {
     test('a normal object at sixty percent is spoken', () {
-      expect(
-        isConfidentDetection(
-          objectAt('chair', confidence: 0.60),
-          lenient: false,
-        ),
-        isTrue,
-      );
+      expect(isConfidentDetection(objectAt('chair', confidence: 0.60)), isTrue);
     });
 
     test('a normal object below the bar is not', () {
       expect(
-        isConfidentDetection(
-          objectAt('chair', confidence: 0.59),
-          lenient: false,
-        ),
+        isConfidentDetection(objectAt('chair', confidence: 0.59)),
         isFalse,
       );
     });
 
     test('a risky class at seventy percent is not spoken', () {
       expect(
-        isConfidentDetection(
-          objectAt('carrot', confidence: 0.70),
-          lenient: false,
-        ),
+        isConfidentDetection(objectAt('carrot', confidence: 0.70)),
         isFalse,
       );
     });
 
     test('a risky class at eighty percent is spoken', () {
       expect(
-        isConfidentDetection(
-          objectAt('carrot', confidence: 0.80),
-          lenient: false,
-        ),
+        isConfidentDetection(objectAt('carrot', confidence: 0.80)),
         isTrue,
       );
     });
 
-    test('a manual request lowers the bar for ordinary objects', () {
-      expect(
-        isConfidentDetection(
-          objectAt('chair', confidence: 0.55),
-          lenient: true,
-        ),
-        isTrue,
-      );
+    test('a positive key identification meets the scene threshold', () {
+      expect(isConfidentDetection(objectAt('keys', confidence: 0.70)), isTrue);
     });
 
     test('an ambiguous box can be spoken as a group at the ordinary bar', () {
@@ -367,38 +413,26 @@ void main() {
         confidence: 0.65,
         spokenAs: 'small object',
       );
-      expect(isConfidentDetection(ambiguous, lenient: false), isTrue);
+      expect(isConfidentDetection(ambiguous), isTrue);
     });
 
     test('a risky class below the strict confidence is silent', () {
       expect(
-        isConfidentDetection(
-          objectAt('mobile phone', confidence: 0.65),
-          lenient: false,
-        ),
+        isConfidentDetection(objectAt('mobile phone', confidence: 0.65)),
         isFalse,
       );
     });
 
     test('a strict class above the confidence is spoken', () {
       expect(
-        isConfidentDetection(
-          objectAt('mobile phone', confidence: 0.80),
-          lenient: false,
-        ),
+        isConfidentDetection(objectAt('mobile phone', confidence: 0.80)),
         isTrue,
       );
     });
 
     test('a small stationery class needs the strict bar', () {
-      expect(
-        isConfidentDetection(objectAt('pen', confidence: 0.70), lenient: false),
-        isFalse,
-      );
-      expect(
-        isConfidentDetection(objectAt('pen', confidence: 0.80), lenient: false),
-        isTrue,
-      );
+      expect(isConfidentDetection(objectAt('pen', confidence: 0.70)), isFalse);
+      expect(isConfidentDetection(objectAt('pen', confidence: 0.80)), isTrue);
     });
 
     test('a huge appliance below the frame-area floor is rejected', () {
@@ -418,24 +452,201 @@ void main() {
       expect(hasPlausibleLargeClassArea(visibleRefrigerator), isTrue);
     });
 
-    test('a manual request still refuses a weak risky label', () {
-      expect(
-        isConfidentDetection(
-          objectAt('carrot', confidence: 0.62),
-          lenient: true,
-        ),
-        isFalse,
-      );
+    test('a weak keys candidate is insufficient for a spoken scene label', () {
+      expect(isConfidentDetection(objectAt('keys', confidence: 0.53)), isFalse);
+    });
+  });
+
+  group('scene object selection', () {
+    test(
+      'overlapping card guesses use a broad spoken name in both languages',
+      () {
+        final id = objectAt('id card', confidence: 0.86);
+        final bank = objectAt('bank card', confidence: 0.81);
+        final scene = ObjectDetectService.selectSceneObjects([
+          id,
+          bank,
+        ], limit: 5);
+
+        expect(scene.single.label, 'card');
+        expect(objectDescription(scene, hindi: false), startsWith('Card,'));
+        expect(objectDescription(scene, hindi: true), startsWith('कार्ड,'));
+      },
+    );
+
+    test('an overlapping label below its own floor cannot hide a bottle', () {
+      final cup = objectAt('cup', confidence: 0.74);
+      final bottle = objectAt('bottle', left: 0.44, confidence: 0.65);
+      expect(boxIou(cup.box, bottle.box), closeTo(2 / 3, 0.0001));
+
+      for (final includeCandidates in [false, true]) {
+        final selected = ObjectDetectService.selectSceneObjects(
+          [cup, bottle],
+          includeCandidates: includeCandidates,
+          limit: 5,
+        );
+        expect(selected.single.name, 'bottle');
+      }
     });
 
-    test('pen is not a COCO class, so a desk label must stay silent', () {
+    test(
+      'keeps a small flat bottle while enforcing the furniture size floor',
+      () {
+        final bottle = objectAt('bottle', width: 0.12, height: 0.035);
+        final refrigerator = objectAt(
+          'refrigerator',
+          left: 0.7,
+          width: 0.1,
+          height: 0.15,
+        );
+
+        expect(bottle.hasTallShape, isFalse);
+        expect(
+          ObjectDetectService.selectSceneObjects([
+            bottle,
+            refrigerator,
+          ], limit: 5),
+          [bottle],
+        );
+      },
+    );
+
+    test('weak labels remain candidates even when several boxes have them', () {
+      final lamp = objectAt('lamp', confidence: 0.52, left: 0.1);
+      final shoe = objectAt('shoe', confidence: 0.57, left: 0.65);
+
       expect(
-        isConfidentDetection(
-          objectAt('carrot', confidence: 0.66),
-          lenient: false,
+        ObjectDetectService.selectSceneObjects(
+          [lamp, shoe],
+          includeCandidates: true,
+          limit: 5,
         ),
-        isFalse,
+        hasLength(2),
       );
+      expect(
+        ObjectDetectService.selectSceneObjects([lamp, shoe], limit: 5),
+        isEmpty,
+      );
+    });
+  });
+
+  group('ManualObjectScan', () {
+    final start = DateTime(2026, 11, 22);
+    const gap = Duration(milliseconds: 300);
+
+    test('a focused scan confirms the item nearest the centre', () {
+      final look = ManualObjectScan(type: ObjectScanType.item);
+      final keys = objectAt('keys', top: 0.45, height: 0.10, confidence: 0.77);
+      final cup = objectAt('cup', left: 0.75, width: 0.19);
+
+      expect(look.region!.width, 0.5);
+      expect(look.observe(start, [cup, keys]), isNull);
+      final subject = look.observe(start.add(gap), [cup, keys])!.single;
+      expect(subject.name, 'keys');
+      expect(subject.box.center.dx, closeTo(0.5, 0.0001));
+    });
+
+    test('a focused miss leaves two frames to confirm a wider crop', () {
+      final look = ManualObjectScan(type: ObjectScanType.item);
+      final keys = objectAt('keys', top: 0.45, height: 0.10);
+
+      expect(look.observe(start, []), isNull);
+      expect(look.observe(start.add(gap), [objectAt('cup')]), isNull);
+      expect(look.region!.width, 0.5);
+      expect(look.observe(start.add(gap * 2), []), isNull);
+      expect(look.region!.width, greaterThan(0.5));
+      expect(look.observe(start.add(gap * 3), [keys]), isNull);
+      final subject = look.observe(start.add(gap * 4), [keys])!.single;
+      expect(subject.name, 'keys');
+    });
+
+    test('allows one missed frame without changing the field of view', () {
+      final look = ManualObjectScan();
+      final cup = objectAt('cup', left: 0.02);
+
+      expect(look.observe(start, [cup]), isNull);
+      expect(look.ready(start.add(const Duration(milliseconds: 299))), isFalse);
+      expect(look.observe(start.add(gap), []), isNull);
+      expect(look.region, isNull);
+      final confirmed = look.observe(start.add(gap * 2), [cup]);
+      expect(confirmed?.single.name, 'cup');
+      expect(confirmed?.single.direction, ObjectDirection.left);
+    });
+
+    test('confirms a close-up and reports it in full-frame coordinates', () {
+      final look = ManualObjectScan();
+      final keys = objectAt('keys', left: 0.8, width: 0.1, height: 0.12);
+      final clipped = objectAt('cup', left: 0, width: 0.1, height: 0.12);
+
+      expect(look.observe(start, []), isNull);
+      expect(look.observe(start.add(gap), []), isNull);
+      final region = look.region!;
+      expect(look.observe(start.add(gap * 2), [keys, clipped]), isNull);
+      expect(look.region, region);
+      final match = look.observe(start.add(gap * 3), [keys, clipped])!.single;
+      expect(match.name, 'keys');
+      expect(match.direction, ObjectDirection.right);
+      expect(match.box.left, closeTo(0.716, 0.00001));
+      expect(match.box.width, closeTo(0.072, 0.00001));
+    });
+
+    test('a weak shoe prediction leads to a tighter view that finds keys', () {
+      final look = ManualObjectScan();
+      final shoe = objectAt('shoe', confidence: 0.57);
+      final keys = objectAt('keys', confidence: 0.70);
+      final wideView = ObjectDetectService.selectSceneObjects([shoe], limit: 5);
+      final closeView = ObjectDetectService.selectSceneObjects([
+        keys,
+      ], limit: 5);
+
+      expect(look.observe(start, wideView), isNull);
+      expect(look.observe(start.add(gap), wideView), isNull);
+      final firstCrop = look.region!;
+      expect(look.observe(start.add(gap * 2), []), isNull);
+      expect(look.region!.width, lessThan(firstCrop.width));
+      expect(look.observe(start.add(gap * 3), closeView), isNull);
+      final confirmed = look.observe(start.add(gap * 4), closeView);
+      expect(confirmed?.single.name, 'keys');
+    });
+
+    test('a borderline label repeated in the wide view needs a close-up', () {
+      final look = ManualObjectScan();
+      final lamp = objectAt('lamp', confidence: 0.64);
+
+      expect(look.observe(start, [lamp]), isNull);
+      expect(look.observe(start.add(gap), [lamp]), isNull);
+      expect(look.region, isNotNull);
+      expect(look.observe(start.add(gap * 2), []), isNull);
+      expect(look.observe(start.add(gap * 3), []), isNull);
+      expect(look.observe(start.add(gap * 4), []), isEmpty);
+    });
+
+    test('a close-up can confirm the same borderline label', () {
+      final look = ManualObjectScan();
+      final shoe = objectAt('shoe', confidence: 0.66);
+      expect(look.observe(start, [shoe]), isNull);
+      expect(look.observe(start.add(gap), [shoe]), isNull);
+      final region = look.region!;
+      final closerShoe = objectAt(
+        'shoe',
+        confidence: 0.72,
+        left: (shoe.box.left - region.left) / region.width,
+        top: (shoe.box.top - region.top) / region.height,
+        width: shoe.box.width / region.width,
+        height: shoe.box.height / region.height,
+      );
+
+      final answer = look.observe(start.add(gap * 2), [closerShoe]);
+      expect(answer?.single.name, 'shoe');
+    });
+
+    test('ends after five frames when a close-up only matches once', () {
+      final look = ManualObjectScan();
+      expect(look.observe(start, []), isNull);
+      expect(look.observe(start.add(gap), []), isNull);
+      expect(look.observe(start.add(gap * 2), [objectAt('cup')]), isNull);
+      expect(look.observe(start.add(gap * 3), []), isNull);
+      expect(look.observe(start.add(gap * 4), []), isEmpty);
     });
   });
 

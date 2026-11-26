@@ -1,5 +1,6 @@
 import '../vision/detected_object.dart';
 import '../vision/object_colour.dart';
+import 'household_object_labels.dart';
 
 /// Human-readable names for the detector's classes.
 ///
@@ -138,15 +139,24 @@ const Map<String, String> englishToHindiObjectLabels = {
   'remote': 'रिमोट',
   'cell phone': 'फ़ोन',
   'microwave': 'माइक्रोवेव',
-  'oven': 'ओवन',
-  'toaster': 'टोस्टर',
-  'sink': 'सिंक',
   'refrigerator': 'रेफ्रिजरेटर',
   'clock': 'घड़ी',
-  'vase': 'फूलदान',
-  'scissors': 'कैंची',
   'teddy bear': 'टेडी बियर',
   'hair drier': 'हेयर ड्रायर',
+  ...householdHindiObjectLabels,
+};
+
+const _englishDisplayLabels = <String, String>{
+  'id card': 'ID card',
+  'tv stand': 'TV stand',
+  'usb hub': 'USB hub',
+  'wi-fi router': 'Wi-Fi router',
+  'allen key': 'Allen key',
+};
+
+const _hindiAmbiguousLabels = <String, String>{
+  'card': 'कार्ड',
+  'medicine container': 'दवा का डिब्बा',
 };
 
 /// Joins object labels into a spoken list.
@@ -205,14 +215,13 @@ String objectDescription(
   if (objects.isEmpty) return '';
 
   if (hindi) {
-    // Hindi is frozen for the pilot, so there is no Hindi label for the
-    // generic "small object" / "writing tool" fallbacks. Speaking the English
-    // fallback inside a Hindi sentence would be worse, and speaking the raw
-    // class would undo the point of the fallback. Omit those objects; the
-    // caller says the existing "unrecognised object" line when nothing else
-    // is left.
+    // Speak a broad label only when its Hindi counterpart is available.
     final describable = objects
-        .where((object) => !object.isAmbiguous)
+        .where(
+          (object) =>
+              !object.isAmbiguous ||
+              _hindiAmbiguousLabels.containsKey(object.label),
+        )
         .toList(growable: false);
     if (describable.isEmpty) return '';
     return describable
@@ -258,13 +267,14 @@ String _englishGroupKey(DetectedObject object, bool includeDistance) {
 String _englishGroup(_EnglishGroup group, bool includeDistance) {
   final object = group.object;
   final label = object.label == 'handbag' ? 'bag' : object.label;
+  final displayLabel = _englishDisplayLabels[label] ?? label;
   final colour = objectSpeaksColour(label) ? object.colour : null;
   final descriptor = colour == null ? '' : '${englishColourName(colour)} ';
 
   final name = group.count == 1
-      ? _capitalise('$descriptor$label')
+      ? _capitalise('$descriptor$displayLabel')
       : '${_capitalise(_numberWord(group.count))} $descriptor'
-            '${englishPluralObjectLabel(label, group.count)}';
+            '${englishPluralObjectLabel(displayLabel, group.count)}';
   if (!includeDistance) {
     return switch (object.direction) {
       ObjectDirection.ahead => '$name, centre of view.',
@@ -318,6 +328,10 @@ String englishPluralObjectLabel(String name, int count) {
     'headphones',
     'pants',
     'scissors',
+    'nail clippers',
+    'rubber gloves',
+    'sticky notes',
+    'tongs',
   };
   if (alreadyPlural.contains(name)) return name;
 
@@ -357,7 +371,10 @@ String _numberWord(int count) {
 
 String _hindiObject(DetectedObject object, bool includeDistance) {
   final label = object.label == 'handbag' ? 'bag' : object.label;
-  final base = englishToHindiObjectLabels[label] ?? label;
+  final base =
+      _hindiAmbiguousLabels[label] ??
+      englishToHindiObjectLabels[label] ??
+      label;
   final colour = objectSpeaksColour(object.label) ? object.colour : null;
   final name = colour == null ? base : '${hindiColourName(colour)} $base';
   if (!includeDistance) {

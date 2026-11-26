@@ -32,6 +32,9 @@ void main() {
     expect(find?.name, 'blue phone case');
     expect(builtInFinderTarget(find!.name), isNull);
     expect(builtInFinderTarget('My ignition key'), SearchTarget.keys);
+    expect(builtInFinderTarget('the TV remote'), SearchTarget.remote);
+    expect(builtInFinderTarget('my phone charger'), SearchTarget.charger);
+    expect(builtInFinderTarget('मेरी कंघी'), SearchTarget.comb);
     expect(
       FinderRequest.parse('Teach Cue my Travel Mug')?.action,
       FinderAction.teach,
@@ -39,6 +42,17 @@ void main() {
     expect(FinderRequest.parse('मेरी लाल चाबी खोजो')?.name, 'लाल चाबी');
     expect(FinderRequest.parse('लाल चाबी सीखो')?.action, FinderAction.teach);
     expect(FinderRequest.parse('read this page'), isNull);
+  });
+
+  test('a taught pen drive can be found by an unambiguous spoken alias', () {
+    final penDrive = _profile('Pendrive');
+    final usb = _profile('USB drive');
+    expect(taughtFinderItem([penDrive], 'my pen drive'), same(penDrive));
+    expect(taughtFinderItem([penDrive], 'USB stick'), same(penDrive));
+    expect(taughtFinderItem([penDrive], 'पेन ड्राइव'), same(penDrive));
+    expect(taughtFinderItem([penDrive, usb], 'USB drive'), same(usb));
+    expect(taughtFinderItem([penDrive, usb], 'flash drive'), isNull);
+    expect(taughtFinderItem([penDrive], 'pen'), isNull);
   });
 
   test(
@@ -119,6 +133,57 @@ void main() {
     expect(search.observe([key]).match, isNull);
   });
 
+  test('a borderline taught pen drive is checked at a tighter scale', () {
+    final start = DateTime(2026, 11, 20);
+    final search = ItemSearch.personal(_profile('Pen drive'), start);
+    const drive = DetectedObject(
+      name: 'Pen drive',
+      confidence: 0.71,
+      box: Rect.fromLTWH(0.53, 0.35, 0.40, 0.24),
+    );
+    for (var frame = 0; frame < 3; frame++) {
+      search.beginFrame(start.add(Duration(milliseconds: frame * 500)), 0);
+      expect(
+        search.observe([drive], personalDirection: ObjectDirection.right).match,
+        isNull,
+      );
+    }
+    final crop = search.region!;
+    expect(search.isVerifying, isTrue);
+    expect(crop.width, lessThan(drive.box.width));
+    expect(crop.center, drive.box.center);
+
+    search.beginFrame(start.add(const Duration(milliseconds: 1500)), 0);
+    final verified = search.observe([
+      const DetectedObject(
+        name: 'Pen drive',
+        confidence: 0.73,
+        box: Rect.fromLTWH(0, 0, 1, 1),
+      ),
+    ]);
+    expect(verified.match?.box, crop);
+    expect(verified.personalDirection, ObjectDirection.right);
+  });
+
+  test('a taught match stays tentative when the closer view is empty', () {
+    final start = DateTime(2026, 11, 20);
+    final search = ItemSearch.personal(_profile('Pen drive'), start);
+    const drive = DetectedObject(
+      name: 'Pen drive',
+      confidence: 0.71,
+      box: Rect.fromLTWH(0.3, 0.35, 0.40, 0.24),
+    );
+    for (var frame = 0; frame < 3; frame++) {
+      search.beginFrame(start.add(Duration(milliseconds: frame * 500)), 0);
+      expect(search.observe([drive]).match, isNull);
+    }
+    search.beginFrame(start.add(const Duration(milliseconds: 1500)), 0);
+    expect(search.observe([]).match, isNull);
+    expect(search.isVerifying, isFalse);
+    expect(search.region, isNull);
+    expect(search.scanDetail, isTrue);
+  });
+
   test(
     'native feature windows support side guidance only when they agree',
     () async {
@@ -178,6 +243,47 @@ void main() {
         vision.capture(jpeg, const Size(480, 854)),
         throwsA(isA<UnclearPersonalExample>()),
       );
+    },
+  );
+
+  test(
+    'taught-item verification scores only the newly cropped image',
+    () async {
+      const channel = MethodChannel('cue/personal_items');
+      final messenger =
+          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+      var resemblesItem = true;
+      messenger.setMockMethodCallHandler(channel, (call) async {
+        expect(call.method, 'describe');
+        expect(call.arguments['regions'], [
+          [0.0, 0.0, 1.0, 1.0],
+        ]);
+        return {
+          'format': 'test-model',
+          'vectors': [
+            resemblesItem ? [1, 0, 0] : [0, 1, 0],
+          ],
+        };
+      });
+      addTearDown(() => messenger.setMockMethodCallHandler(channel, null));
+
+      const vision = PersonalItemVision();
+      final jpeg = Uint8List.fromList([1]);
+      final item = _profile('Pen drive');
+      Future<({List<DetectedObject> candidates, ObjectDirection? direction})>
+      verify() => vision.find(
+        jpeg,
+        const Size(480, 854),
+        item,
+        detail: false,
+        verifyCrop: true,
+      );
+
+      final seen = await verify();
+      expect(seen.candidates.single.box, const Rect.fromLTWH(0, 0, 1, 1));
+      expect(seen.direction, isNull);
+      resemblesItem = false;
+      expect((await verify()).candidates, isEmpty);
     },
   );
 }

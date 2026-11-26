@@ -23,6 +23,13 @@ DetectedObject? _observe(
   return search.observe(detections).match;
 }
 
+Rect _inCrop(Rect box, Rect crop) => Rect.fromLTWH(
+  (box.left - crop.left) / crop.width,
+  (box.top - crop.top) / crop.height,
+  box.width / crop.width,
+  box.height / crop.height,
+);
+
 void main() {
   const smallKey = Rect.fromLTWH(0.73, 0.53, 0.043, 0.017);
 
@@ -97,6 +104,76 @@ void main() {
     expect(_observe(search, 1, [right]), isNull);
     expect(_observe(search, 2, [left]), isNull);
     expect(_observe(search, 3, [_detection(smallKey, name: 'pen')]), isNull);
+  });
+
+  test('a borderline key confirms only in a fresh, closer view', () {
+    final search = ItemSearch(SearchTarget.keys, _start);
+    final key = _detection(smallKey, score: 0.30);
+    for (var frame = 0; frame < 3; frame++) {
+      expect(_observe(search, frame, [key]), isNull);
+    }
+    final crop = search.region!;
+    expect(search.isVerifying, isTrue);
+    expect(crop.width, lessThan(1));
+    expect(crop.contains(smallKey.center), isTrue);
+    final closer = _detection(_inCrop(smallKey, crop), score: 0.34);
+    expect(search.observe([closer]).match, isNull);
+    final confirmed = _observe(search, 3, [closer])!;
+    expect(confirmed.direction, ObjectDirection.right);
+    expect(confirmed.box.left, closeTo(smallKey.left, 0.000001));
+    expect(search.isVerifying, isFalse);
+  });
+
+  test('different boxes in both verification crops restart the search', () {
+    final search = ItemSearch(SearchTarget.keys, _start);
+    final key = _detection(smallKey, score: 0.30);
+    for (var frame = 0; frame < 3; frame++) {
+      _observe(search, frame, [key]);
+    }
+    final different = _detection(
+      const Rect.fromLTWH(0.12, 0.31, 0.10, 0.05),
+      score: 0.90,
+    );
+    expect(_observe(search, 3, [different]), isNull);
+    expect(search.isVerifying, isTrue);
+    expect(search.observe([different]).match, isNull);
+    expect(_observe(search, 4, [different]), isNull);
+    expect(search.isVerifying, isFalse);
+    final normalCrop = search.region!;
+    final returnedKey = _detection(_inCrop(smallKey, normalCrop));
+    expect(_observe(search, 5, [returnedKey]), isNull);
+    expect(_observe(search, 6, [returnedKey]), isNull);
+    expect(_observe(search, 7, [returnedKey])?.name, 'keys');
+  });
+
+  test('tries a wider close-up when the tight view loses a weak key', () {
+    final search = ItemSearch(SearchTarget.keys, _start);
+    final weak = _detection(smallKey, score: 0.30);
+    for (var i = 0; i < 3; i++) {
+      _observe(search, i, [weak]);
+    }
+    final tight = search.region!;
+    expect(_observe(search, 3, []), isNull);
+    final wider = search.region!;
+    expect(wider.width, inExclusiveRange(tight.width, 1));
+    final zoomed = _detection(_inCrop(smallKey, wider), score: 0.32);
+    final found = _observe(search, 4, [zoomed])!;
+    expect(found.box.left, closeTo(smallKey.left, 0.000001));
+    expect(found.direction, ObjectDirection.right);
+  });
+
+  test('rotation and age discard a pending closer view', () {
+    for (final (frame, rotation) in [(3, 90), (8, 0)]) {
+      final search = ItemSearch(SearchTarget.keys, _start);
+      final weakKey = _detection(smallKey, score: 0.30);
+      for (var i = 0; i < 3; i++) {
+        _observe(search, i, [weakKey]);
+      }
+      expect(search.isVerifying, isTrue);
+      expect(_observe(search, frame, [weakKey], rotation: rotation), isNull);
+      expect(search.isVerifying, isFalse);
+      expect(search.region, isNull);
+    }
   });
 
   test('supports label aliases across frames in a full-frame search', () {

@@ -3,29 +3,106 @@ import 'dart:ui';
 import 'detected_object.dart';
 import 'object_colour.dart';
 
-/// Spatial agreement across two fresh frames for one user-requested look.
+enum ObjectScanType { scene, item, itemWithText }
+
+/// Looks for a match across two fresh frames, with time for missed detections.
 class ManualObjectScan {
+  ManualObjectScan({this.type = ObjectScanType.scene})
+    : _region = type == ObjectScanType.scene ? null : _tighterCloseUp;
+
+  static const _maxPasses = 5;
+  static const _frameGap = Duration(milliseconds: 300);
+  static const _closeUp = Rect.fromLTRB(0.14, 0.16, 0.86, 0.84);
+  static const _tighterCloseUp = Rect.fromLTRB(0.25, 0.28, 0.75, 0.72);
+
+  final ObjectScanType type;
+
+  /// Whether to begin near the middle of the view and describe one item.
+  bool get focused => type != ObjectScanType.scene;
+
   final _tracker = ObjectTracker(passesToConfirm: 2);
-  DateTime? _firstFrameAt;
+  DateTime? _lastFrameAt;
+  int _passes = 0;
+  bool _sawFullFrameCandidate = false;
+  Rect? _region;
+
+  /// A close-up can find small items and check borderline full-frame labels.
+  Rect? get region => _region;
 
   bool ready(DateTime now) {
-    final first = _firstFrameAt;
-    return first == null ||
-        now.difference(first) >= const Duration(milliseconds: 300);
+    final last = _lastFrameAt;
+    return _passes < _maxPasses &&
+        (last == null || now.difference(last) >= _frameGap);
   }
 
-  /// Null means wait for the second frame. An empty list is a final miss.
+  /// Null means wait for another frame. An empty list is a final miss.
   List<DetectedObject>? observe(
     DateTime capturedAt,
     List<DetectedObject> seen,
   ) {
     if (!ready(capturedAt)) return null;
-    final confirmed = _tracker.update(seen);
-    if (_firstFrameAt == null) {
-      _firstFrameAt = capturedAt;
-      return null;
+    final crop = region;
+    _lastFrameAt = capturedAt;
+    _passes++;
+    if (crop == null && seen.isNotEmpty) _sawFullFrameCandidate = true;
+    final detections = crop == null
+        ? seen
+        : [
+            for (final object in seen)
+              if (boxInFullFrame(object.box, crop) case final box?)
+                DetectedObject(
+                  name: object.name,
+                  confidence: object.confidence,
+                  box: box,
+                  colour: object.colour,
+                  spokenAs: object.spokenAs,
+                ),
+          ].where(hasPlausibleLargeClassArea).toList();
+    final confirmed = _tracker.update(
+      detections,
+      requireCurrentDetection: true,
+    );
+    if (focused) {
+      if (confirmed.isNotEmpty) {
+        const centre = Offset(0.5, 0.5);
+        return [
+          confirmed.reduce(
+            (a, b) =>
+                (a.box.center - centre).distanceSquared <=
+                    (b.box.center - centre).distanceSquared
+                ? a
+                : b,
+          ),
+        ];
+      }
+      // The tight crop can cut through the item. Give the wider crop enough
+      // fresh frames to confirm it.
+      if (crop == _tighterCloseUp &&
+          (_passes == 3 || (_passes == 2 && detections.isEmpty))) {
+        _region = _closeUp;
+      }
+      return _passes == _maxPasses ? const [] : null;
     }
-    return confirmed;
+    final answer = crop == null
+        ? confirmed.where((object) => !_needsCloseUp(object)).toList()
+        : confirmed;
+    if (answer.isNotEmpty || _passes == _maxPasses) return answer;
+
+    if (crop == null &&
+        _passes >= 2 &&
+        (!_sawFullFrameCandidate || confirmed.isNotEmpty)) {
+      _region = _closeUp;
+    } else if (crop == _closeUp && detections.isEmpty) {
+      _region = _tighterCloseUp;
+    }
+    return null;
+  }
+
+  bool _needsCloseUp(DetectedObject object) {
+    if (object.confidence >= strictClassConfidence) return false;
+    final interior = _closeUp.deflate(0.02);
+    return interior.contains(object.box.topLeft) &&
+        interior.contains(object.box.bottomRight);
   }
 }
 
@@ -135,6 +212,14 @@ class ObjectTracker {
     // Nearest first: for walking, distance matters more than label order.
     confirmed.sort(_byImportance);
     return confirmed;
+  }
+
+  /// The identity of an object returned by the latest update.
+  Object? identityOf(DetectedObject object) {
+    for (final track in _tracks.values) {
+      if (identical(track.object, object)) return track;
+    }
+    return null;
   }
 
   /// Forgets everything. Used when the camera stops or the mode changes.

@@ -27,8 +27,11 @@ import '../core/object_labels.dart';
 import 'aiming_coach.dart';
 import 'frame_metrics.dart';
 import 'item_search.dart';
+import 'object_announcement_history.dart';
 import 'reading_quality.dart';
 import 'scene_router.dart';
+import 'screen_status.dart';
+import 'screen_watch.dart';
 import 'stability_gate.dart';
 
 /// The live loop: frame in, spoken result or aiming cue out.
@@ -62,29 +65,17 @@ class FramePipeline {
 
   static const Duration _minFrameGap = Duration(milliseconds: 320);
   static const Duration _staleAfter = Duration(milliseconds: 1400);
+  static const Duration _manualTextWindow = Duration(seconds: 3);
 
   /// Below this mean absolute difference the scene is treated as unchanged.
   static const double _changeThreshold = 0.004;
 
-  /// Consecutive untrusted readings before the app admits it cannot read them.
-  ///
-  /// One bad frame is normal: motion blur, a passing shadow, a page turning.
-  /// Three in a row means the marks in view are genuinely not readable, which
-  /// is the handwriting case. Saying so immediately would interrupt the user
-  /// every time the camera nudged.
-  static const int _untrustedBeforeSpeaking = 3;
-
-  /// Consecutive frames without words before saying there is something in view
-  /// that Cue cannot identify.
-  ///
-  /// The same reasoning as [_untrustedBeforeSpeaking] applies: one wordless
-  /// frame is a shadow or a camera nudge, three is a scene.
-  static const int _notTextBeforeSpeaking = 3;
-
   final FrameSampler _sampler = FrameSampler();
   final StabilityGate _stability = StabilityGate();
+  final ScreenStatusTracker _screenStatus = ScreenStatusTracker();
+  ScreenWatch? _screenWatch;
   final AimingCoach _coach = AimingCoach();
-  final SceneRouter _router = const SceneRouter();
+  CueLanguage? _textReaderLanguage;
 
   DateTime _lastAttempt = DateTime.fromMillisecondsSinceEpoch(0);
   DateTime _lastOcr = DateTime.fromMillisecondsSinceEpoch(0);
@@ -94,21 +85,15 @@ class FramePipeline {
   bool _manualRequested = false;
   int _generation = 0;
 
-  /// How many readings in a row were refused by the honesty gate.
-  int _untrustedStreak = 0;
+  Timer? _textReadTimeout;
+  String? _textReadHint;
+  int _textReadRevision = 0;
 
-  /// When the "I cannot read these marks" sentence was last spoken.
-  DateTime? _lastHonestyAt;
-
-  /// How many frames in a row contained no words at all.
-  int _notTextStreak = 0;
+  bool get isCheckingForText => _textReadTimeout != null;
 
   /// The last time the pipeline tried the other script. This prevents a
   /// second OCR pass on every frame on poor lighting.
   DateTime? _lastAutoDetectAt;
-
-  /// When "I see something, but I cannot tell what it is" was last spoken.
-  DateTime? _lastNotTextAt;
 
   /// Tilt and steadiness hints are useful but must never nag.
   DateTime? _lastTiltCueAt;
@@ -119,11 +104,8 @@ class FramePipeline {
   /// script's voice is missing. Silence beats repeating the same warning.
   bool _voiceMissingAnnounced = false;
 
-  /// Minimum gap between object-detection passes in Object mode.
-  ///
-  /// Short enough that two passes (the confirmation) finish in about two and
-  /// a half seconds, long enough that the phone does not cook.
-  static const Duration _objectMinGap = Duration(milliseconds: 1200);
+  /// Gap between object-detection passes while the phone is steady.
+  static const Duration _objectMinGap = Duration(milliseconds: 650);
 
   /// Slower cadence while the phone is moving.
   ///
@@ -148,10 +130,11 @@ class FramePipeline {
   /// Automatic narration only speaks objects that were not already described,
   /// so this is a floor between sentences rather than a repeat timer. Manual
   /// requests ignore it.
-  static const Duration _objectNarrationGap = Duration(milliseconds: 2600);
+  static const Duration _objectNarrationGap = Duration(milliseconds: 1800);
 
   ManualObjectScan? _requestedLook;
   Timer? _lookTimeout;
+  String? _lookFallback;
 
   /// Tracks objects across automatic scans.
   final ObjectTracker _objectTracker = ObjectTracker();
@@ -162,13 +145,7 @@ class FramePipeline {
   /// TEMP DIAG: rate-limits the object-skip reason line.
   DateTime _lastObjectDiagAt = DateTime.fromMillisecondsSinceEpoch(0);
 
-  /// How many of each description have already been spoken.
-  ///
-  /// The key is what was said: class, direction and distance band. A value is
-  /// how many objects currently match it. When the count rises, Cue says the
-  /// group again ("two chairs"), because the number is new information. A
-  /// still scene keeps the same counts and stays silent.
-  Map<String, int> _describedObjectCounts = <String, int>{};
+  final _objectAnnouncements = ObjectAnnouncementHistory();
 
   /// When objects were last announced. Automatic narration uses it as the
   /// minimum gap between sentences; the delta check decides whether anything
@@ -268,7 +245,49 @@ class FramePipeline {
   /// Entry point wired to the camera stream. Fire-and-forget on purpose: the
   /// camera must never be blocked while OCR runs.
   void handleFrame(CameraFrame frame) {
+    if (_screenWatch case final watch?) _observeScreenWatch(watch, frame);
     unawaited(_handle(frame));
+  }
+
+  bool get isWatchingScreen => _screenWatch != null;
+
+  void startScreenWatch() {
+    reset();
+    _interpretation = Interpretation.text;
+    _screenWatch = ScreenWatch();
+  }
+
+  bool stopScreenWatch() {
+    if (_screenWatch == null) return false;
+    cancelRequestedScans();
+    _screenWatch = null;
+    _screenStatus.reset();
+    _textReaderLanguage = null;
+    _generation++;
+    return true;
+  }
+
+  void _observeScreenWatch(ScreenWatch watch, CameraFrame frame) {
+    final audio = AudioBus.instance;
+    final notice = watch.observe(
+      frame,
+      DateTime.now(),
+      phoneMoving: MotionMonitor.instance.isMoving || audio.isMuted,
+      canAnnounce:
+          !audio.isSpeaking && !isCheckingForText && _requestedLook == null,
+    );
+    if (notice == null ||
+        (notice == ScreenWatchNotice.movement && _screenStatus.hasCandidate)) {
+      return;
+    }
+    final message = switch (notice) {
+      ScreenWatchNotice.movement => _strings.screenMovement,
+      ScreenWatchNotice.unchanged => _strings.screenUnchanged(
+        ScreenWatch.unchangedAfter.inSeconds,
+      ),
+      ScreenWatchNotice.unclear => _strings.screenUnclear,
+    };
+    unawaited(_speakScreenReading(message, _generation));
   }
 
   ItemSearch? _itemSearch;
@@ -337,7 +356,7 @@ class FramePipeline {
     final List<DetectedObject> candidates;
     ObjectDirection? personalDirection;
     if (personal == null) {
-      candidates = await ObjectDetectService.instance.detect(
+      candidates = await ObjectDetectService.everyday.detect(
         jpeg,
         searchTarget: search.target,
       );
@@ -347,6 +366,7 @@ class FramePipeline {
         uprightSize(frame.image.width, frame.image.height, rotation),
         personal,
         detail: search.scanDetail,
+        verifyCrop: search.isVerifying,
       );
       candidates = observation.candidates;
       personalDirection = observation.direction;
@@ -357,17 +377,26 @@ class FramePipeline {
         MotionMonitor.instance.isMoving) {
       return;
     }
-    final observation = search.observe(candidates);
+    final observation = search.observe(
+      candidates,
+      personalDirection: personalDirection,
+    );
     if (developerMode) detectedObjects.value = observation.candidates;
     final match = observation.match;
     if (match == null) {
-      if (search.takeHint(now)) {
-        final message = _strings.itemSearchHint;
-        onResult(message);
-        unawaited(
-          AudioBus.instance.say(message, priority: SpeechPriority.navigation),
-        );
-      }
+      if (AudioBus.instance.speaking.value) return;
+      final hasCandidate = observation.candidates.isNotEmpty;
+      final shouldCue = hasCandidate
+          ? search.takeCandidateHint()
+          : search.takeHint(now);
+      if (!shouldCue) return;
+      final message = hasCandidate
+          ? _strings.itemCandidateHint
+          : _strings.itemSearchHint;
+      onResult(message);
+      unawaited(
+        AudioBus.instance.say(message, priority: SpeechPriority.navigation),
+      );
       return;
     }
     final answer = personal == null
@@ -376,7 +405,10 @@ class FramePipeline {
             hindi: _language.isHindi,
             includeDistance: false,
           )
-        : _strings.personalItemFound(personal.name, personalDirection);
+        : _strings.personalItemFound(
+            personal.name,
+            observation.personalDirection,
+          );
     _finishItemSearch(search, answer, match: match);
   }
 
@@ -389,35 +421,88 @@ class FramePipeline {
     stopItemSearch();
     if (match != null) {
       detectedObjects.value = [match];
-      unawaited(Feedback.instance.found());
+      unawaited(Feedback.instance.itemFound());
     }
     onResult(message);
     unawaited(AudioBus.instance.say(message, priority: SpeechPriority.answer));
   }
 
-  /// Double-tap / "read now": ignore the change gate and the stability gate.
-  void requestManualRead() {
-    stopItemSearch();
+  /// Starts a check from a double tap or voice command.
+  bool requestManualRead({bool wholeScene = false}) {
     if (_interpretation == Interpretation.object) {
-      if (_requestedLook != null) return;
-      _requestedLook = ManualObjectScan();
-      _lookTimeout = Timer(const Duration(seconds: 4), () {
-        _endLook();
-        _sayObjectMiss();
-      });
-      return;
+      return _requestObjectScan(
+        wholeScene ? ObjectScanType.scene : ObjectScanType.item,
+      );
     }
-    _manualRequested = true;
+    stopItemSearch();
+    _endLook();
+    if (_interpretation == Interpretation.text) {
+      if (isCheckingForText) return false;
+      _textReadRevision++;
+      _stability.reset();
+      _lastAutoDetectAt = null;
+      _textReadTimeout = Timer(_manualTextWindow, () {
+        final hint = _textReadHint ?? _strings.aimAtText;
+        cancelTextRead();
+        if (AudioBus.instance.isMuted) return;
+        final now = DateTime.now();
+        _lastSpokenAt = now;
+        _lastStillCueAt = now;
+        _lastTiltCueAt = now;
+        unawaited(AudioBus.instance.say(hint, priority: SpeechPriority.answer));
+        onResult(hint);
+      });
+    } else {
+      _manualRequested = true;
+    }
+    return true;
+  }
+
+  bool requestObjectDetails() =>
+      _requestObjectScan(ObjectScanType.itemWithText);
+
+  bool _requestObjectScan(ObjectScanType type) {
+    if (_requestedLook != null) return false;
+    stopItemSearch();
+    cancelTextRead();
+    final look = ManualObjectScan(type: type);
+    _requestedLook = look;
+    _lookTimeout = Timer(const Duration(seconds: 4), () {
+      final fallback =
+          _lookFallback ?? (look.focused ? _strings.aimAtItem : null);
+      _endLook();
+      _answerObjectScan(fallback);
+    });
+    return true;
+  }
+
+  /// Cancels pending Text and Object requests when the user interrupts.
+  void cancelRequestedScans() {
+    cancelTextRead();
+    _endLook();
+  }
+
+  void cancelTextRead() {
+    final timeout = _textReadTimeout;
+    if (timeout == null) return;
+    timeout.cancel();
+    _textReadTimeout = null;
+    _textReadHint = null;
+    _textReadRevision++;
+    _stability.reset();
   }
 
   void _endLook() {
     _lookTimeout?.cancel();
     _lookTimeout = null;
     _requestedLook = null;
+    _lookFallback = null;
   }
 
-  void _sayObjectMiss() {
-    final text = noObjectsMessage(hindi: _language.isHindi);
+  void _answerObjectScan([String? answer]) {
+    if (AudioBus.instance.isMuted) return;
+    final text = answer ?? noObjectsMessage(hindi: _language.isHindi);
+    _lastObjectSpokenAt = DateTime.now();
     onResult(text);
     unawaited(AudioBus.instance.say(text, priority: SpeechPriority.navigation));
   }
@@ -472,16 +557,15 @@ class FramePipeline {
   void reset() {
     stopItemSearch();
     _generation++;
-    _endLook();
+    cancelRequestedScans();
     detectedObjects.value = const <DetectedObject>[];
     _sampler.reset();
     _stability.reset();
+    _screenStatus.reset();
+    _screenWatch = null;
+    _textReaderLanguage = null;
     _coach.reset();
     _manualRequested = false;
-    _untrustedStreak = 0;
-    _lastHonestyAt = null;
-    _notTextStreak = 0;
-    _lastNotTextAt = null;
     _lastTiltCueAt = null;
     _lastStillCueAt = null;
     _movingSince = null;
@@ -490,7 +574,7 @@ class FramePipeline {
     _lastSpokenAt = null;
     _lastAutoDetectAt = null;
     _lastObjectAt = DateTime.fromMillisecondsSinceEpoch(0);
-    _describedObjectCounts = <String, int>{};
+    _objectAnnouncements.reset();
     _lastObjectSpokenAt = null;
     _lastObjects = const <DetectedObject>[];
     _objectTracker.reset();
@@ -571,11 +655,12 @@ class FramePipeline {
     if (moving &&
         _requestedLook == null &&
         !_manualRequested &&
+        !isCheckingForText &&
         !_banknoteManualPending &&
         _objectOnRequest == null) {
       // A long scan gets one "hold still" hint. A direct request does not:
       // the user is already waiting for an answer.
-      if (!quietObject) _noteMovement(now);
+      if (!quietObject && !isWatchingScreen) _noteMovement(now);
       if (_interpretation != Interpretation.object &&
           _interpretation != Interpretation.banknote) {
         return;
@@ -585,7 +670,9 @@ class FramePipeline {
     }
 
     // Object mode: the camera feeds YOLO instead of the text recogniser.
-    if (_interpretation == Interpretation.object || _objectOnRequest != null) {
+    if (_interpretation == Interpretation.object ||
+        _requestedLook != null ||
+        _objectOnRequest != null) {
       final sideQuestion = _objectOnRequest != null;
       final look = sideQuestion ? null : _requestedLook;
       if (look != null && !look.ready(now)) return;
@@ -599,7 +686,7 @@ class FramePipeline {
           moving &&
           _movingSince != null &&
           now.difference(_movingSince!) >= _objectScanResetAfter) {
-        _describedObjectCounts = <String, int>{};
+        _objectAnnouncements.reset();
       }
 
       final canNarrate =
@@ -647,8 +734,9 @@ class FramePipeline {
         if (sideQuestion) {
           _completeObjectRequest(null);
         } else if (look != null && identical(_requestedLook, look)) {
+          final fallback = _lookFallback ?? _strings.objectScanUnavailable;
           _endLook();
-          _sayObjectMiss();
+          _answerObjectScan(fallback);
         }
       } finally {
         _busy = false;
@@ -712,22 +800,37 @@ class FramePipeline {
     if (now.difference(_lastAttempt) < _minFrameGap) return;
     _lastAttempt = now;
     final metrics = _sampler.sample(frame.image);
-    final manual = _manualRequested;
-    _manualRequested = false;
+    final revision = _textReadRevision;
+    final manual = isCheckingForText;
+    final watchingScreen = isWatchingScreen;
 
-    // A stale scene is analysed at least once every 1.4 s even if the change
+    // A frame belongs to the check (or automatic scan) that started it.
+    bool isCurrentRead() =>
+        generation == _generation &&
+        revision == _textReadRevision &&
+        _requestedLook == null;
+
+    if (manual) {
+      _textReadHint = metrics.isTooDark
+          ? _strings.lightForText
+          : moving || metrics.isTooBlurry
+          ? _strings.steadyForText
+          : _strings.aimAtText;
+    }
+
+    // Follow small progress numbers even when the frame looks unchanged.
+    final readInterval = _screenStatus.hasCandidate
+        ? const Duration(milliseconds: 700)
+        : _staleAfter;
+    // A stale scene is analysed periodically even if the change
     // gate says nothing moved. Without this, a perfectly still page would
     // never be read, and a permanently soft camera would look dead.
-    final stale = now.difference(_lastOcr) > _staleAfter;
+    final stale = now.difference(_lastOcr) > readInterval;
     final tooBlurry = metrics.isTooBlurry;
     final unchanged = metrics.change < _changeThreshold;
 
     if (!manual && !stale && (tooBlurry || unchanged)) {
-      // Still worth telling the user it is too dark, even though OCR is
-      // skipped. This is the one cue that does not need recognised text.
-      if (metrics.isTooDark) {
-        _maybeAim(metrics, null, now, '');
-      } else if (tooBlurry) {
+      if (tooBlurry && !metrics.isTooDark && !watchingScreen) {
         _maybeTiltCue(frame.deviceOrientation, now);
       }
       return;
@@ -742,54 +845,58 @@ class FramePipeline {
         frame.deviceOrientation,
       );
       final watch = Stopwatch()..start();
-      // The app's language is the saved preference. The script being read may
-      // differ from this for one frame; that does not change the app.
-      CueLanguage readerLanguage = _language;
+      // Keep the recogniser that found the current text for the next frame.
+      CueLanguage readerLanguage = _textReaderLanguage ?? _language;
+      final bytes = frame.nv21;
       OcrRead read = await OcrService.instance.readLiveFrame(
-        nv21: frame.nv21,
+        nv21: bytes,
         width: frame.image.width,
         height: frame.image.height,
         rotation: rotation,
         bytesPerRow: frame.bytesPerRow,
-        language: _language,
+        language: readerLanguage,
       );
 
       // A stop/resume while OCR was queued cancels everything that follows,
       // including the language-switch choice below.
-      if (generation != _generation) return;
+      if (!isCurrentRead()) return;
+      var status = analyseScreenStatus(
+        read.text,
+        includeInputPrompts: watchingScreen,
+      );
 
       // Script auto-detection: if the selected recogniser returned nothing
       // useful, try the other script. The app decides this by itself because
       // a blind user cannot see that they are holding the other script.
       final speaking = AudioBus.instance.speaking.value;
       final lastAuto = _lastAutoDetectAt;
+      final scriptRetryGap = manual
+          ? const Duration(milliseconds: 900)
+          : const Duration(seconds: 15);
       final autoDetectAllowed =
-          (lastAuto == null ||
-              now.difference(lastAuto) > const Duration(seconds: 15)) &&
-          !speaking &&
-          !AudioBus.instance.hasReading;
+          (lastAuto == null || now.difference(lastAuto) > scriptRetryGap) &&
+          (manual || (!speaking && !AudioBus.instance.hasReading));
 
-      final selectedSpeakable = speakable(read.text);
-      final selectedReadable =
-          read.text.trim().isNotEmpty && looksLikeText(selectedSpeakable);
+      var text = speakable(read.text);
+      var quality = ReadingQuality.of(text, read.confidence);
+      final selectedTier = quality.tier;
       final mostlyDevanagari = _devanagariFraction(read.text) > 0.15;
-      final fewWords = _wordCount(selectedSpeakable) <= 2;
-      final latinLooksEnglish = looksLikeEnglishText(selectedSpeakable);
+      final scriptMismatch = readerLanguage.isHindi
+          ? !mostlyDevanagari
+          : mostlyDevanagari || !looksLikeEnglishText(text);
       final tryOther =
-          (!selectedReadable ||
-              mostlyDevanagari ||
-              fewWords ||
-              !latinLooksEnglish) &&
+          status == null &&
+          (selectedTier != ReadingTier.certain || scriptMismatch) &&
           !metrics.isTooBlurry &&
           autoDetectAllowed;
 
       if (tryOther) {
         _lastAutoDetectAt = now;
-        final other = _language == CueLanguage.english
+        final other = readerLanguage == CueLanguage.english
             ? CueLanguage.hindi
             : CueLanguage.english;
         final otherRead = await OcrService.instance.readLiveFrame(
-          nv21: frame.nv21,
+          nv21: bytes,
           width: frame.image.width,
           height: frame.image.height,
           rotation: rotation,
@@ -797,14 +904,36 @@ class FramePipeline {
           language: other,
         );
 
-        if (otherRead.text.trim().isNotEmpty &&
-            looksLikeText(speakable(otherRead.text))) {
+        if (!isCurrentRead()) return;
+        final otherStatus = analyseScreenStatus(
+          otherRead.text,
+          includeInputPrompts: watchingScreen,
+        );
+        final otherText = speakable(otherRead.text);
+        final otherQuality = ReadingQuality.of(otherText, otherRead.confidence);
+        final otherTier = otherQuality.tier;
+        final otherIsDevanagari = _devanagariFraction(otherText) > 0.15;
+        final otherMatchesScript = other.isHindi
+            ? otherIsDevanagari
+            : !otherIsDevanagari && looksLikeEnglishText(otherText);
+        if (!manual && otherStatus != null) {
+          readerLanguage = other;
+          read = otherRead;
+          text = otherText;
+          quality = otherQuality;
+          status = otherStatus;
+        } else if (otherTier != ReadingTier.refused &&
+            (otherTier.index < selectedTier.index ||
+                (otherTier == selectedTier &&
+                    scriptMismatch &&
+                    otherMatchesScript))) {
           final previousVoice = TtsService.instance.language;
           if (await _ensureReadingVoice(other)) {
+            if (!isCurrentRead()) return;
             if (kDebugMode) {
               debugPrint('live: auto-detected ${other.label} script');
             }
-            if (previousVoice != other) {
+            if (!manual && previousVoice != other) {
               unawaited(
                 AudioBus.instance.say(
                   other.isHindi
@@ -816,21 +945,29 @@ class FramePipeline {
             }
             readerLanguage = other;
             read = otherRead;
+            text = otherText;
+            quality = otherQuality;
+            status = otherStatus;
           }
         }
       }
       // The switch itself is awaited, so the camera may have stopped while we
       // waited for the voice. Do not speak from a superseded session.
-      if (generation != _generation) return;
+      if (!isCurrentRead()) return;
 
-      if (read.text.trim().isNotEmpty) {
-        final voiceReady = await _ensureReadingVoice(readerLanguage);
-        if (!voiceReady) return; // Voice missing: said once, not guessed.
-        if (generation != _generation) return;
+      final confidence = read.confidence;
+      final candidate = confidence == null || confidence >= minTrustedConfidence
+          ? status
+          : null;
+      _textReaderLanguage = status != null || quality.speakable
+          ? readerLanguage
+          : null;
+      final update = _screenStatus.observe(candidate, now);
+      if (!manual && status != null) {
+        _stability.reset();
+        if (update != null) await _announceScreenStatus(update, generation);
+        return;
       }
-
-      final text = speakable(read.text);
-      final quality = ReadingQuality.of(text, read.confidence);
 
       if (kDebugMode) {
         debugPrint(
@@ -843,45 +980,60 @@ class FramePipeline {
         );
       }
 
-      final scene = _router.decide(metrics: metrics, text: text);
-      if (kDebugMode) {
-        debugPrint('live: scene $scene');
-      }
-
-      // A bright, sharp frame with no words is a scene, not a page: say so
-      // once, honestly, instead of letting the aiming coach keep asking for
-      // text that is not there. Aiming is skipped here for the same reason;
-      // darkness is classified as unclear and handled by the aiming path.
-      if (scene.kind == SceneKind.notText && text.isEmpty) {
+      if (!quality.speakable) {
         _stability.reset();
-        _notTextStreak++;
-        _maybeSpeakNotText(manual: manual);
         return;
       }
 
-      // Any words at all mean the no-words streak is over, even if the marks
-      // turn out to be unreadable handwriting.
-      _notTextStreak = 0;
-      // Words came back, so a later wordless scene may once again deserve one
-      // honest sentence instead of silence.
-      _lastNotTextAt = null;
+      final stable = _stability.add(text);
+      final certain = maySpeakUnprompted(quality.tier);
+      // A clear manual result is immediate. Doubtful text needs a second
+      // matching frame and is only spoken in response to an explicit check.
+      final shouldRead = manual ? certain || stable : certain && stable;
+      if (shouldRead) {
+        if (!await _ensureReadingVoice(readerLanguage) || !isCurrentRead()) {
+          return;
+        }
+        final audio = AudioBus.instance;
+        final spoken = audio.speakResult(
+          text,
+          force: manual,
+          uncertain: !certain,
+          readerLanguage: readerLanguage,
+        );
+        if (spoken) {
+          if (manual) cancelTextRead();
+          _lastSpokenAt = DateTime.now();
+          if (candidate != null) {
+            _screenStatus.markAnnounced(candidate, _lastSpokenAt!);
+          }
+          onResult(
+            AudioBus.labelReading(
+              text,
+              uncertain: !certain,
+              language: readerLanguage,
+            ),
+          );
+          if (certain) unawaited(Feedback.instance.found());
+          return;
+        }
+      }
+
+      // Idle Text mode only coaches framing when there is a text layout.
+      if (manual || watchingScreen || read.blocks.isEmpty) return;
 
       final frameSize = rotatedSize(
         frame.image.width,
         frame.image.height,
         rotation,
       );
-      final layout = read.blocks.isEmpty
-          ? null
-          : TextLayout.fromRects(
-              read.blocks
-                  .map((block) => block.boundingBox)
-                  .toList(growable: false),
-              frameSize,
-              wordCount: _wordCount(text),
-            );
+      final layout = TextLayout.fromRects(
+        read.blocks.map((block) => block.boundingBox).toList(growable: false),
+        frameSize,
+        wordCount: _wordCount(text),
+      );
 
-      if (kDebugMode && layout != null) {
+      if (kDebugMode) {
         debugPrint(
           'live: aim centerX=${layout.centerX.toStringAsFixed(2)} '
           'coverage=${layout.coverage.toStringAsFixed(3)} '
@@ -891,90 +1043,49 @@ class FramePipeline {
         );
       }
 
-      // Any tier except refusal may be heard. An uncertain result is useful,
-      // but only after the app says clearly that it may be wrong.
-      final tier = quality.tier;
-      final uncertain = tier == ReadingTier.uncertain;
-      final readable = tier != ReadingTier.refused;
-
-      if (readable) {
-        _untrustedStreak = 0;
-        // A readable result ends the unreadable-marks episode, so the next one
-        // may speak once again.
-        _lastHonestyAt = null;
-        _stability.add(text);
-
-        // Automatic reading stays silent when the result is only doubtful.
-        //
-        // Saying "I am not sure" again and again while the camera pans a room
-        // is worse than silence: nobody asked for a reading, and the apology
-        // becomes the loudest thing the app does. A deliberate read (double
-        // tap or "read") still gets the honest uncertain answer with its
-        // warning, because then the user is waiting for one.
-        final skipDoubt = !maySpeakUnprompted(tier) && !manual;
-        if (skipDoubt && kDebugMode) {
-          debugPrint('live: silent automatic reading tier=${tier.name}');
-        }
-
-        if ((manual || _stability.isStable) && !skipDoubt) {
-          final spoken = AudioBus.instance.speakResult(
-            text,
-            force: manual,
-            uncertain: uncertain,
-            readerLanguage: readerLanguage,
-          );
-          if (spoken) {
-            _lastSpokenAt = DateTime.now();
-            if (kDebugMode) {
-              debugPrint(
-                'live: speak chars=${text.length} manual=$manual tier=${tier.name}',
-              );
-            }
-            onResult(
-              AudioBus.labelReading(
-                text,
-                uncertain: uncertain,
-                language: readerLanguage,
-              ),
-            );
-            unawaited(
-              uncertain
-                  ? Feedback.instance.notSure()
-                  : Feedback.instance.found(),
-            );
-          }
-        }
-      } else {
-        _stability.reset();
-
-        if (text.isEmpty) {
-          _untrustedStreak = 0;
-          if (manual) {
-            unawaited(Feedback.instance.notSure());
-            unawaited(
-              AudioBus.instance.say(
-                _strings.notSureNoText,
-                priority: SpeechPriority.alert,
-              ),
-            );
-          }
-        } else {
-          // There are marks in view, but they are not words the app can
-          // honestly read. This is the handwriting case.
-          _untrustedStreak++;
-          _maybeRefuseReading(manual: manual);
-        }
-      }
-
-      if (!manual) {
-        _maybeAim(metrics, layout, DateTime.now(), readable ? text : '');
-      }
+      _maybeAim(metrics, layout, DateTime.now(), text);
     } catch (_) {
       // One bad frame must never take the live screen down. The next frame
       // gets another chance.
     } finally {
       _busy = false;
     }
+  }
+
+  Future<void> _announceScreenStatus(
+    ScreenStatus status,
+    int generation,
+  ) async {
+    final message = screenStatusSpeech(status, hindi: _language.isHindi);
+    if (await _speakScreenReading(message, generation)) {
+      _screenStatus.markAnnounced(status, _lastSpokenAt!);
+    }
+  }
+
+  Future<bool> _speakScreenReading(String message, int generation) async {
+    final audio = AudioBus.instance;
+    if (audio.isMuted ||
+        audio.isSpeaking ||
+        isCheckingForText ||
+        _requestedLook != null) {
+      return false;
+    }
+    final language = _language;
+    if (!await _ensureReadingVoice(language) || generation != _generation) {
+      return false;
+    }
+    if (audio.isSpeaking || isCheckingForText || _requestedLook != null) {
+      return false;
+    }
+
+    // Text deduplication would otherwise treat a new percentage as one
+    // changed word in the same sentence.
+    if (!audio.speakResult(message, force: true, readerLanguage: language)) {
+      return false;
+    }
+    _lastSpokenAt = DateTime.now();
+    onResult(message);
+    return true;
   }
 
   /// Wakes a side question with its answer, once.
@@ -1036,7 +1147,7 @@ class FramePipeline {
   ///
   /// Automatic narration is paced by [_objectNarrationGap] and speaks only
   /// objects that were not already described. Manual double-tap always
-  /// answers, including with "I cannot see any object clearly".
+  /// answers or gives a framing hint.
   ///
   /// A live answer must first be confirmed by [_objectTracker] so a one-frame
   /// hallucination never reaches the user's ears.
@@ -1050,28 +1161,31 @@ class FramePipeline {
     _lastObjectAt = DateTime.now();
     final side = _objectOnSide;
     final sideQuestion = _objectOnRequest != null && side != null;
+    String? qualityHint;
 
-    if (!sideQuestion && _interpretation == Interpretation.object) {
+    if (!sideQuestion) {
       final quality = _sampler.sample(frame.image);
       // Keep the original request pending while automatic lighting settles.
       if (quality.isTooDark && (waitingForTorch?.call() ?? false)) return;
-      // Dark paint can still have clear edges in a well-lit room.
-      if (quality.isTooBlurry ||
-          (quality.isTooDark && (isTorchOn?.call() ?? false))) {
-        detectedObjects.value = const [];
-        _lastObjects = const [];
-        _objectTracker.reset();
-        if (look != null) {
-          _endLook();
-          final hint = quality.isTooDark
-              ? _strings.objectTooDark(torchOn: isTorchOn?.call() ?? false)
-              : _strings.objectTooBlurry;
-          onResult(hint);
-          unawaited(
-            AudioBus.instance.say(hint, priority: SpeechPriority.navigation),
-          );
+      final torchOn = isTorchOn?.call() ?? false;
+      final tooDark = quality.isTooDark && torchOn;
+      if (tooDark || quality.isTooBlurry) {
+        // A small, sharp item on a plain surface can score low for the whole
+        // frame. While steady, let the detector check any frame with detail.
+        if (look == null &&
+            (tooDark ||
+                quality.sharpness <= 0 ||
+                MotionMonitor.instance.isMoving)) {
+          detectedObjects.value = const [];
+          _lastObjects = const [];
+          _objectTracker.reset();
+          return;
         }
-        return;
+        if (look != null) {
+          qualityHint = quality.isTooDark
+              ? _strings.objectTooDark(torchOn: torchOn)
+              : _strings.objectTooBlurry;
+        }
       }
     }
 
@@ -1079,21 +1193,23 @@ class FramePipeline {
       frame.description,
       frame.deviceOrientation,
     );
+    final region = look?.region;
     final encodeWatch = Stopwatch()..start();
-    final jpeg = await cameraFrameToJpeg(frame, rotation);
-    if (generation != _generation) return;
+    final jpeg = await cameraFrameToJpeg(frame, rotation, region: region);
+    if (generation != _generation ||
+        (look != null && !identical(_requestedLook, look))) {
+      return;
+    }
 
     final detectWatch = Stopwatch()..start();
-    final detected = await ObjectDetectService.instance.detect(
+    final detector = manual
+        ? ObjectDetectService.instance
+        : ObjectDetectService.everyday;
+    final detected = await detector.detect(
       jpeg,
-      // A side question asks about one half of the view, so a slightly larger
-      // pool is needed to find an object there before the list is trimmed.
-      // A manual request is a scene question, so it gets a wider answer than
-      // the live three-object narration.
-      maxObjects: sideQuestion
-          ? 8
-          : (look != null ? 5 : (developerMode ? 15 : 3)),
-      lenient: manual || developerMode || sideQuestion,
+      maxObjects: sideQuestion ? 8 : (look == null && developerMode ? 15 : 5),
+      includeCandidates: look == null && (developerMode || sideQuestion),
+      includePeople: look?.focused != true,
     );
     if (kDebugMode) {
       debugPrint(
@@ -1114,23 +1230,51 @@ class FramePipeline {
       final result = look.observe(capturedAt, detected);
       if (result == null) return;
       confirmed = result;
-      _endLook();
+      if (!look.focused) _endLook();
     } else {
       final candidates = developerMode || sideQuestion
-          ? detected
-                .where((item) => isConfidentDetection(item, lenient: false))
-                .toList()
+          ? detected.where(isConfidentDetection).toList()
           : detected;
       confirmed = _objectTracker.update(candidates);
     }
     _lastObjects = confirmed;
-    detectedObjects.value = developerMode ? detected : confirmed;
+    detectedObjects.value = developerMode && region == null
+        ? detected
+        : confirmed;
+
+    final hindi = _language.isHindi;
+    if (look != null && look.focused && region != null) {
+      final subject = confirmed.singleOrNull;
+      final description = objectDescription(
+        confirmed,
+        hindi: hindi,
+        includeDistance: false,
+      );
+      // Keep the confirmed description available if OCR outlasts the scan.
+      final fallback = description.isEmpty
+          ? (qualityHint ?? _strings.aimAtItem)
+          : description;
+      _lookFallback = fallback;
+      final text = look.type == ObjectScanType.itemWithText
+          ? await _readObjectText(frame, rotation, subject?.box ?? region)
+          : '';
+      if (!identical(_requestedLook, look)) return;
+      _endLook();
+      if (description.isNotEmpty) {
+        _objectAnnouncements.remember(confirmed, DateTime.now());
+      }
+      _answerObjectScan(
+        text.isEmpty
+            ? fallback
+            : '$description ${_strings.visibleObjectText(text)}'.trim(),
+      );
+      return;
+    }
 
     if (sideQuestion) {
       DetectedObject? match;
       for (final object in detected) {
-        if (object.direction != side ||
-            !isConfidentDetection(object, lenient: false)) {
+        if (object.direction != side || !isConfidentDetection(object)) {
           continue;
         }
         if (match == null || object.area > match.area) match = object;
@@ -1141,51 +1285,35 @@ class FramePipeline {
       return;
     }
 
-    final hindi = _language.isHindi;
-
     if (confirmed.isEmpty) {
-      _describedObjectCounts = <String, int>{};
       if (!manual) return;
-      _lastObjectSpokenAt = DateTime.now();
-      final text = noObjectsMessage(hindi: hindi);
-      onResult(text);
-      unawaited(
-        AudioBus.instance.say(text, priority: SpeechPriority.navigation),
-      );
+      _answerObjectScan(qualityHint);
       return;
     }
 
     final now = DateTime.now();
     final settled = !MotionMonitor.instance.isMoving;
 
-    // Group what Cue can describe. A group is a spoken sentence: class,
-    // direction and distance band (the description itself splits a group
-    // further by colour). A group whose count rose (a new object, or a second
-    // one beside the first) is worth one sentence; a scene that has not
-    // changed is silence. Manual requests always describe the whole scene.
+    // Describe the whole group when a new instance appears in it.
     final describable = confirmed.take(5).toList(growable: false);
-    final groups = <String, List<DetectedObject>>{};
+    final identityOf = look == null ? _objectTracker.identityOf : null;
+    final alreadySpoken = _objectAnnouncements.observe(
+      describable,
+      now,
+      identityOf: identityOf,
+    );
+    final groups = <(String, ObjectDirection), List<DetectedObject>>{};
     for (final object in describable) {
       groups
-          .putIfAbsent(_objectKey(object), () => <DetectedObject>[])
+          .putIfAbsent((
+            object.label,
+            object.direction,
+          ), () => <DetectedObject>[])
           .add(object);
     }
-    final currentCounts = <String, int>{
-      for (final entry in groups.entries) entry.key: entry.value.length,
-    };
-    // Objects that have left the view are forgotten, so coming back to a
-    // shelf after looking away describes it again instead of staying silent.
-    _describedObjectCounts = <String, int>{
-      for (final entry in _describedObjectCounts.entries)
-        if (currentCounts[entry.key] != null)
-          entry.key: entry.value < currentCounts[entry.key]!
-              ? entry.value
-              : currentCounts[entry.key]!,
-    };
-    final increased = groups.entries
+    final newGroups = groups.values
         .where(
-          (entry) =>
-              entry.value.length > (_describedObjectCounts[entry.key] ?? 0),
+          (group) => group.any((object) => !alreadySpoken.contains(object)),
         )
         .toList(growable: false);
 
@@ -1201,14 +1329,9 @@ class FramePipeline {
       return;
     }
 
-    // Three sentences is already a lot to listen to; more is noise. The whole
-    // group is included, so a newly counted pair is said as a pair.
-    final selected = manual
-        ? groups.entries.take(1).toList(growable: false)
-        : increased.take(3).toList(growable: false);
-    final spoken = <DetectedObject>[
-      for (final group in selected) ...group.value,
-    ];
+    // Describe up to three groups per answer and keep each group's count.
+    final selected = manual ? groups.values : newGroups;
+    final spoken = selected.take(3).expand((group) => group).toList();
     if (spoken.isEmpty) return;
 
     final message = objectDescription(
@@ -1232,22 +1355,65 @@ class FramePipeline {
     }
 
     _lastObjectSpokenAt = now;
-    for (final group in selected) {
-      _describedObjectCounts[group.key] = currentCounts[group.key]!;
-    }
+    _objectAnnouncements.remember(spoken, now, identityOf: identityOf);
 
     // Field diagnostics: a wrong colour is invisible in a release build, and
     // this line is the only record of what Cue sampled.
     debugPrint(
       'live: objects '
       '${confirmed.map((object) => object.toString()).join('; ')} '
-      'manual=$manual increased=${increased.length}',
+      'manual=$manual newGroups=${newGroups.length}',
     );
 
     onResult(message);
     unawaited(
       AudioBus.instance.say(message, priority: SpeechPriority.navigation),
     );
+  }
+
+  /// Reads a small amount of clear text from the same frame as the close-up.
+  Future<String> _readObjectText(
+    CameraFrame frame,
+    int rotation,
+    Rect region,
+  ) async {
+    final width = frame.image.width;
+    final height = frame.image.height;
+    final read = await OcrService.instance.readLiveFrame(
+      nv21: frame.nv21,
+      width: width,
+      height: height,
+      rotation: rotation,
+      bytesPerRow: frame.bytesPerRow,
+      language: _language,
+    );
+    final size = rotatedSize(width, height, rotation);
+    final bounds = Rect.fromLTRB(
+      region.left * size.width,
+      region.top * size.height,
+      region.right * size.width,
+      region.bottom * size.height,
+    );
+    final lines = <String>{};
+    for (final block in read.blocks) {
+      for (final line in block.lines) {
+        final box = line.boundingBox;
+        final overlap = box.intersect(bounds);
+        if (overlap.isEmpty ||
+            overlap.width * overlap.height < box.width * box.height * 0.8) {
+          continue;
+        }
+        final text = speakable(line.text);
+        if (text.length > 80 ||
+            ReadingQuality.of(text, line.confidence).tier !=
+                ReadingTier.certain) {
+          continue;
+        }
+        lines.add(text);
+        if (lines.length == 2) return lines.join(', ');
+      }
+    }
+    return lines.join(', ');
   }
 
   /// Reads one banknote frame and answers when the evidence is sufficient.
@@ -1429,17 +1595,6 @@ class FramePipeline {
     unawaited(AudioBus.instance.say(text, priority: SpeechPriority.answer));
   }
 
-  /// The part of a description that makes it worth saying again.
-  ///
-  /// Class, direction and distance band. Confidence and exact pixels are
-  /// deliberately absent: they wobble every pass, and narrating that wobble
-  /// would make a still scene sound as if it were moving. Colour is part of
-  /// the sentence but not the key, for the same reason: one flickering sample
-  /// should not re-announce an object the user has already been told about.
-  String _objectKey(DetectedObject object) {
-    return '${object.label}|${object.direction.index}';
-  }
-
   /// Makes sure the voice matches the script being read.
   ///
   /// The app's language and saved preference are not touched; this only
@@ -1478,77 +1633,6 @@ class FramePipeline {
     unawaited(
       AudioBus.instance.say(
         _strings.notBuilt(_strings.modeName(_interpretation.label)),
-        priority: SpeechPriority.alert,
-      ),
-    );
-  }
-
-  /// Says, honestly, that there is something in view but it is not words.
-  ///
-  /// FR-05's fallback. It waits for a few consecutive wordless frames so a
-  /// passing shadow does not trigger it, then says it once for that episode.
-  /// Repeating "I see something but cannot tell what it is" every few seconds
-  /// while the user pans a room is noise, not help; the message returns only
-  /// after text has been seen and lost again, or when the user asks.
-  void _maybeSpeakNotText({required bool manual}) {
-    if (AudioBus.instance.isMuted) return;
-    final now = DateTime.now();
-
-    if (!manual) {
-      if (_notTextStreak < _notTextBeforeSpeaking) return;
-      // Already said it for this stretch of wordless frames.
-      if (_lastNotTextAt != null) return;
-    }
-
-    _lastNotTextAt = now;
-    // Treat it like speech for aiming purposes: do not chirp a framing tone
-    // over the top of the sentence the user is listening to.
-    _lastSpokenAt = now;
-
-    if (kDebugMode) {
-      debugPrint('live: not-text manual=$manual streak=$_notTextStreak');
-    }
-
-    unawaited(Feedback.instance.notSure());
-    unawaited(
-      AudioBus.instance.say(
-        _strings.somethingThere,
-        priority: SpeechPriority.alert,
-      ),
-    );
-  }
-
-  /// Says, honestly, that there are marks but no readable words.
-  ///
-  /// A blind user cannot check a wrong reading, so guessing is worse than
-  /// refusing. The manual path always answers because the user asked; the
-  /// automatic path waits for a few consecutive failures and then says it once
-  /// for that episode rather than repeating an apology.
-  void _maybeRefuseReading({required bool manual}) {
-    if (AudioBus.instance.isMuted) return;
-    final now = DateTime.now();
-
-    if (!manual) {
-      if (_untrustedStreak < _untrustedBeforeSpeaking) return;
-      // Already said it for this stretch of unreadable marks.
-      if (_lastHonestyAt != null) return;
-    }
-
-    _lastHonestyAt = now;
-    // Treat it like speech for aiming purposes: do not chirp a framing tone
-    // over the top of the sentence the user is listening to.
-    _lastSpokenAt = now;
-
-    if (kDebugMode) {
-      debugPrint(
-        'live: refuse reading manual=$manual streak=$_untrustedStreak',
-      );
-    }
-
-    unawaited(Feedback.instance.notSure());
-    unawaited(
-      AudioBus.instance.say(
-        _strings.marksNotReadable,
         priority: SpeechPriority.alert,
       ),
     );
@@ -1611,14 +1695,12 @@ class FramePipeline {
 
   void _maybeAim(
     FrameMetrics metrics,
-    TextLayout? layout,
+    TextLayout layout,
     DateTime now,
     String text,
   ) {
-    // The microphone is open. Keep both the tone and the spoken cue out of it.
-    if (AudioBus.instance.isMuted) return;
-    // A sentence is being read. Framing tones are not useful then.
-    if (AudioBus.instance.reading.value) return;
+    final audio = AudioBus.instance;
+    if (audio.isMuted || audio.isSpeaking) return;
 
     final recentlySpoken =
         _lastSpokenAt != null &&
@@ -1642,10 +1724,7 @@ class FramePipeline {
       // No problem to report: if there is unread text in view and nothing is
       // being spoken, the pitch tracks how much of the frame is covered. That
       // is the "tone rises as more text enters the frame" cue from FR-04.
-      if (!recentlySpoken &&
-          !alreadyRead &&
-          layout != null &&
-          layout.wordCount > 0) {
+      if (!recentlySpoken && !alreadyRead && layout.wordCount > 0) {
         unawaited(Feedback.instance.toneFor(layout.coverage));
       }
       return;
@@ -1654,10 +1733,12 @@ class FramePipeline {
     onCue?.call(cue);
     if (kDebugMode) {
       debugPrint(
-        'live: cue ${cue.name} centerX=${layout?.centerX.toStringAsFixed(2) ?? "n/a"}',
+        'live: cue ${cue.name} centerX=${layout.centerX.toStringAsFixed(2)}',
       );
     }
-    unawaited(Feedback.instance.aimProblem(pitch: cue.toneHz, pan: cue.pan));
+    if (cue.pan != 0) {
+      unawaited(Feedback.instance.aimProblem(pitch: cue.toneHz, pan: cue.pan));
+    }
     unawaited(
       AudioBus.instance.say(
         cue.speechFor(_language),

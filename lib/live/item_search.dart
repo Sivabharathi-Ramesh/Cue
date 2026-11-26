@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:ui';
 
 import '../core/personal_items.dart';
@@ -17,6 +18,8 @@ class ItemSearch {
 
   static const _frameGap = Duration(milliseconds: 450);
   static const _evidenceLifetime = Duration(milliseconds: 2500);
+  static const _verificationScoreMargin = 0.15;
+  static const _strongPersonalScore = 0.75;
   static const _fullFrame = Rect.fromLTWH(0, 0, 1, 1);
 
   // Try wide views of close objects before looking at smaller overlapping
@@ -47,9 +50,21 @@ class ItemSearch {
   int? _rotation;
   DateTime? _lastFrame;
   bool _gaveHint = false;
+  bool _gaveCandidateHint = false;
   bool scanDetail = false;
 
-  Rect? get region => _regions[_regionIndex];
+  ({
+    Rect region,
+    Rect? retry,
+    DetectedObject candidate,
+    DateTime started,
+    DateTime after,
+    ObjectDirection? personalDirection,
+  })?
+  _verification;
+
+  Rect? get region => _verification?.region ?? _regions[_regionIndex];
+  bool get isVerifying => _verification != null;
 
   bool ready(DateTime now) {
     final last = _lastFrame;
@@ -57,7 +72,7 @@ class ItemSearch {
   }
 
   void beginFrame(DateTime now, int rotation) {
-    final last = _lastFrame;
+    final last = _verification?.started ?? _lastFrame;
     if (_rotation != rotation ||
         (last != null && now.difference(last) > _evidenceLifetime)) {
       _regionIndex = 0;
@@ -69,9 +84,20 @@ class ItemSearch {
   }
 
   /// Confirms a target only when fresh frames agree on the same position.
-  ({List<DetectedObject> candidates, DetectedObject? match}) observe(
-    List<DetectedObject> detections,
-  ) {
+  ({
+    List<DetectedObject> candidates,
+    DetectedObject? match,
+    ObjectDirection? personalDirection,
+  })
+  observe(
+    List<DetectedObject> detections, {
+    ObjectDirection? personalDirection,
+  }) {
+    final verification = _verification;
+    final capturedAt = _lastFrame ?? startedAt;
+    if (verification != null && !capturedAt.isAfter(verification.after)) {
+      return (candidates: const [], match: null, personalDirection: null);
+    }
     final window = region ?? _fullFrame;
     final inFrame = <DetectedObject>[];
     final builtIn = target;
@@ -81,28 +107,76 @@ class ItemSearch {
           : object.name != personalItem!.name) {
         continue;
       }
-      final box = object.box.intersect(_fullFrame);
-      if (box.isEmpty || _cutByCrop(box, window)) continue;
+      // A taught-item check scores the whole crop as one feature window.
+      final box = verification != null && personalItem != null
+          ? window
+          : boxInFullFrame(object.box, window);
+      if (box == null) continue;
       inFrame.add(
         DetectedObject(
           name: builtIn?.labels.first ?? object.name,
           confidence: object.confidence,
-          box: Rect.fromLTWH(
-            window.left + box.left * window.width,
-            window.top + box.top * window.height,
-            box.width * window.width,
-            box.height * window.height,
-          ),
+          box: box,
         ),
+      );
+    }
+
+    if (verification != null) {
+      final matches = inFrame.where(
+        (object) => boxIou(object.box, verification.candidate.box) >= 0.35,
+      );
+      if (matches.isEmpty) {
+        if (verification.retry case final retry?) {
+          _verification = (
+            region: retry,
+            retry: null,
+            candidate: verification.candidate,
+            started: verification.started,
+            after: capturedAt,
+            personalDirection: verification.personalDirection,
+          );
+        } else if (builtIn != null) {
+          _nextRegion();
+        } else {
+          scanDetail = !scanDetail;
+          _resetRegion();
+        }
+        return (candidates: const [], match: null, personalDirection: null);
+      }
+      final match = matches.reduce(_higherConfidence);
+      _resetRegion();
+      return (
+        candidates: inFrame,
+        match: match,
+        personalDirection: match.direction == verification.personalDirection
+            ? verification.personalDirection
+            : null,
       );
     }
 
     final confirmed = _tracker.update(inFrame, requireCurrentDetection: true);
     if (confirmed.isNotEmpty) {
-      final match = confirmed.reduce(
-        (a, b) => a.confidence >= b.confidence ? a : b,
+      final match = confirmed.reduce(_higherConfidence);
+      final crop = _verificationCrop(match, window);
+      if (crop == null) {
+        return (
+          candidates: inFrame,
+          match: match,
+          personalDirection: personalDirection,
+        );
+      }
+      final retry = builtIn == null
+          ? null
+          : _verificationCrop(match, window, minimumScale: 0.83);
+      _verification = (
+        region: crop,
+        retry: retry == crop ? null : retry,
+        candidate: match,
+        started: capturedAt,
+        after: capturedAt,
+        personalDirection: personalDirection,
       );
-      return (candidates: inFrame, match: match);
+      return (candidates: inFrame, match: null, personalDirection: null);
     }
 
     _passesInRegion++;
@@ -112,11 +186,48 @@ class ItemSearch {
         (_passesInRegion == 4 ||
             _misses == 2 ||
             (_passesInRegion == 1 && _misses == 1))) {
-      _regionIndex = (_regionIndex + 1) % _regions.length;
-      _resetRegion();
+      _nextRegion();
     }
-    return (candidates: inFrame, match: null);
+    return (candidates: inFrame, match: null, personalDirection: null);
   }
+
+  Rect? _verificationCrop(
+    DetectedObject candidate,
+    Rect view, {
+    double minimumScale = 0.65,
+  }) {
+    final builtIn = target;
+    final box = candidate.box;
+    if (builtIn == null) {
+      if (candidate.confidence >= _strongPersonalScore) return null;
+      return Rect.fromCenter(
+        center: box.center,
+        width: box.width * 0.75,
+        height: box.height * 0.75,
+      );
+    }
+    if (!builtIn.needsDetail ||
+        candidate.confidence >=
+            searchCandidateConfidence(builtIn) + _verificationScoreMargin) {
+      return null;
+    }
+
+    // Check small boxes that fit in a closer view with room around them.
+    final coverage = math.max(box.width / view.width, box.height / view.height);
+    final scale = math.max(minimumScale, coverage * 1.25);
+    if (scale > 0.85) return null;
+    final width = view.width * scale;
+    final height = view.height * scale;
+    return Rect.fromLTWH(
+      (box.center.dx - width / 2).clamp(0.0, 1 - width),
+      (box.center.dy - height / 2).clamp(0.0, 1 - height),
+      width,
+      height,
+    );
+  }
+
+  static DetectedObject _higherConfidence(DetectedObject a, DetectedObject b) =>
+      a.confidence >= b.confidence ? a : b;
 
   bool takeHint(DateTime now) {
     if (_gaveHint || now.difference(startedAt) < const Duration(seconds: 7)) {
@@ -126,16 +237,21 @@ class ItemSearch {
     return true;
   }
 
+  bool takeCandidateHint() {
+    if (_gaveCandidateHint) return false;
+    _gaveCandidateHint = true;
+    return true;
+  }
+
+  void _nextRegion() {
+    _regionIndex = (_regionIndex + 1) % _regions.length;
+    _resetRegion();
+  }
+
   void _resetRegion() {
+    _verification = null;
     _tracker.reset();
     _passesInRegion = 0;
     _misses = 0;
   }
-
-  /// A box on an internal boundary may only contain part of the item.
-  bool _cutByCrop(Rect box, Rect window) =>
-      (window.left > 0 && box.left <= 0.01) ||
-      (window.top > 0 && box.top <= 0.01) ||
-      (window.right < 1 && box.right >= 0.99) ||
-      (window.bottom < 1 && box.bottom >= 0.99);
 }

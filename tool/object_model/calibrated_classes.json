@@ -1,0 +1,1477 @@
+{
+  "pen drive": {
+    "method": "Visual references and lookalike negatives",
+    "reference_photos": [
+      "https://commons.wikimedia.org/wiki/File:Kingston_USB_flash_drive.jpg",
+      "https://commons.wikimedia.org/wiki/File:SanDisk-Cruzer-USB-4GB-ThumbDrive.jpg",
+      "https://commons.wikimedia.org/wiki/File:USB_flash_drive.jpg",
+      "https://commons.wikimedia.org/wiki/File:16_USB_flash_drives.jpg"
+    ],
+    "head": {
+      "80": {
+        "filter": "7gjf4c6qJBYQ+fTK+Pz04hkJ1vzv5PEMQ0YY9cgggQAuJgW70BPLDILdtyDZ5Nzt0u0jH/nXwdAb8ubMGQfWCL++DMP97/TG+vtDAvUx/KUVNvvc6DbMBT7rEtwh+/bwEdoD3BMMAzURCvhMDi758+zuOwnfEzoQDgTkEAnOzgo=",
+        "scale": 0.009638524614274502,
+        "bias": -9.22271728515625
+      },
+      "40": {
+        "filter": "MQkTIcjpB//g9uQD0hMNEfgK9Acz8f7wDeoA9u4DBxLvGAzM7eXd+hXz5zH8jPD6BfAq6OEP9/Dyyh8N9/4U7P/1Bf4XAfkL+vnsDvH0+cy/2u0r9hLsG64H9wUj1ujsFd3WAf/i/yj9gSr+DB//zxA27N0H9i796fnDOAvfAfE=",
+        "scale": 0.01408593263477087,
+        "bias": -6.402949810028076
+      },
+      "20": {
+        "filter": "H+KhEtoUBOX2GgoL6xjyquXo7QAEC/kP2vTrEfv63fkJEcUIJdr3AyAigQICSvTM9O3zycQtAfAB2gb3H/FSA+EYALYFI94m4+i4/uYhF+i9I+we9AnoCvjyFx6gFgEADRzs+rj/0xYgAlg48tP8+RACEyz29h4UyNjaFOJN9xE=",
+        "scale": 0.0135830482468009,
+        "bias": -11.812995910644531
+      }
+    }
+  },
+  "air conditioner": {
+    "method": "Text prompts blended with a visual prompt from a labeled LVIS example",
+    "reference_photos": [
+      "https://images.cocodataset.org/train2017/000000208629.jpg"
+    ],
+    "head": {
+      "80": {
+        "filter": "HdhO8vbwEb/x5eXv45H7+jQFBvzi2f0Gzd3q7tQLCCKYrvbc8ccHPtX7l+B/BhX14Mb9+ivM8bwGDe7TQf0I/9LoHu/Z5eS30+Xr9ybW0+f0G9Md2RLjtfX5+9Xs8vnJAdofCkLh+8Mv/c710RUR8NLz+PED/ffeP+Tf/enO40s=",
+        "scale": 0.004579136613756418,
+        "bias": -3.240963935852051
+      },
+      "40": {
+        "filter": "7RcxtA3zAwPu/g3yuevtyfUKGOAF1fzb/gQm5/Xw/l/JBQkUEum+CvDe1OXu1QXtDPsC8AIaEgba0Q/I/uYJ6qfs7SAXFrns4MTcDiEYgQje/cThBCH5LOHR6gT62dqz5dvA+CgO2tjLxOHytuHoKgAI+eYJ5Qvb5fHcWs8fCPk=",
+        "scale": 0.004797115921974182,
+        "bias": -0.9843053817749023
+      },
+      "20": {
+        "filter": "4PICGuEOAdP94toKD/Hj2LwN+IHe8tUd3OEWzf7LxNMpAfIl7uXsAxROp/nV/NLt++Lt6e/96t8F8doCJvZODw79EyIiLN3d3fgL6d7wz0IN3u7u1uPz+eTj5DYM6xPm8dnzIRYU7NboBg8L7O0OExs01jX2Kxc+2M/u2+/4o+8=",
+        "scale": 0.005340531934052706,
+        "bias": -7.139822006225586
+      }
+    }
+  },
+  "alarm clock": {
+    "method": "Text prompts blended with a visual prompt from a labeled LVIS example",
+    "reference_photos": [
+      "https://images.cocodataset.org/train2017/000000139012.jpg"
+    ],
+    "head": {
+      "80": {
+        "filter": "A84IOKXqI+jdLqSS/oH86mEeEA3Coy7T5IUfFRjtCU7q8dz//cr1ScPyichx9fIKwOARqt/E291Huw7g9t7G5+ijMfavxgGn9xIRyP2gFdngq8bly/WM6emUxNXi7QnzO+Yw2wEfp8bu/N77/TADDq7W/ufQ+ZMkOgRANczrHis=",
+        "scale": 0.0028869113884866238,
+        "bias": -5.227504730224609
+      },
+      "40": {
+        "filter": "9h7yIQUEHvz32PgH3s/zyd0DFAPSABXn5wIq/Onl/VK36Nru2/Pe1eUHHBfa4hD66t4EvuMK9eT9C+Xx6/na1IcKwAHszMTyEN+i6wn7gfwB/dTZHBoU/gz6BvUZDdITpwse8u/f7gLW1acA0QQGEMT399L2563llOrgaQkaAts=",
+        "scale": 0.004114401526749134,
+        "bias": -1.297133445739746
+      },
+      "20": {
+        "filter": "4eT60N/mCir6/uzmA77+xvcMCYH39u0N2McT/u0H9s/u9ws1ANnxLigQ0QvoBAf69Qf6Btjy5/TbE/v5Ff0tAvDw/PUqDdjirL3z/xPn0hcBzuYI4ezc+e8M2gQcH/oW3BAV8OwZ5uv5/Af01wvw7Pf11Af6CAYLBQnWD+oEt/g=",
+        "scale": 0.006198264192789793,
+        "bias": -5.875144958496094
+      }
+    }
+  },
+  "bath mat": {
+    "method": "Text prompts blended with a visual prompt from a labeled LVIS example",
+    "reference_photos": [
+      "https://images.cocodataset.org/train2017/000000151832.jpg"
+    ],
+    "head": {
+      "80": {
+        "filter": "/NIQtgjN+Qjv4ffADprr9HwZyNm9yfT5/ePvJckBGAfSE9bjE/j5DxHi5vd/5snR/dwINugr0u/o+dTu+xsG1dQSI9jQ6R3o+/AZ66rI8DcX7gAKmQ3iFckY5c+tCvHuz7MY7a8KKMAZzazx+BsZD9fUCc/2/Aa1luUI5IsJ6BM=",
+        "scale": 0.003989946097135544,
+        "bias": -5.55629825592041
+      },
+      "40": {
+        "filter": "BfH4ANXjCw/J6Qw9AjYYu+YQ7p/X2OoEE+ZA1P7Zvi8lJQb89CfOFM3k+/3n4iT0FBXJ/Pbep9zYBAbR07AUzoXsy/bGzSD8HNfnIu/8isvT2vzG+QyBBP+16+T7qfPUBwYO7PCn2NEL/LzsDAMW3fvvDx486e3kJOXEVaPRwMQ=",
+        "scale": 0.003941706847399473,
+        "bias": -2.6387252807617188
+      },
+      "20": {
+        "filter": "0MqbHO0I77EUt70dINTx7+gT64XcGNsR8gAE7wfQEAru47Y/xPLrC7AT4M3w2//pEAHO5OYW1xTxzs8aP9FWNAzzEuwyy6LT6NP8wMXXFR0R9xX5xfP8Ddz3awHrF+DMG1cfvMEsGM8erIH6Dgf8re3U5An87w0MCPD6wtPpqhc=",
+        "scale": 0.004354706034064293,
+        "bias": -6.790405750274658
+      }
+    }
+  },
+  "bib": {
+    "method": "Text prompts blended with a visual prompt from a labeled LVIS example",
+    "reference_photos": [
+      "https://images.cocodataset.org/train2017/000000536891.jpg"
+    ],
+    "head": {
+      "80": {
+        "filter": "AfINzQ3K+/rqDdmxM834Gk0c1+fF8er6gfQxKt4GCvz4KLbR+eXfMN/qLsEE8Mvr7+/u46zKHD7f1+AD7NvOvucFA+zkx930A/sDsA7Z9f0L0vD4+e3Z9RjY3fHWAP7T4cQhFsoJGPDq2tH3KVAR1OwHAyTQ8d3lExPyGRMZAwU=",
+        "scale": 0.004858074244111776,
+        "bias": -6.694490432739258
+      },
+      "40": {
+        "filter": "AhIaEenMAPvl5gUY2ukiz/4ENrys7xDNTe9szdAI4/Pmtp/h9TMtAsUEC+DjqRDjOO0g1A3szuj4+NcGFv7t2Kfy4xbY3/v3CQEMHszqgcH10vwEJLrXvw2yC8oO/eAA8yv/2cfPu6yg2xIFMNkI9vz/EL4D3NP1BufXOv70EuY=",
+        "scale": 0.004007447976619005,
+        "bias": -3.190077781677246
+      },
+      "20": {
+        "filter": "zvf87hjzABj3/gTV2N//7Q9gtITNHdEdDufZ5b7hwd3S2/gc47ksDNUEzrfd4OcW8hbT9N7t9/3yAcgLvQhvHe0q6akz8fLg5tTs9i69//7f+BcH8u3W9eDq9bXLMrHb+gr18c7yDs8884EFEBsYxv/aFtzUMPT94w/GNtopqfg=",
+        "scale": 0.004531984217464924,
+        "bias": -5.0659260749816895
+      }
+    }
+  },
+  "blanket": {
+    "method": "Text prompts blended with a visual prompt from a labeled LVIS example",
+    "reference_photos": [
+      "https://images.cocodataset.org/train2017/000000520150.jpg"
+    ],
+    "head": {
+      "80": {
+        "filter": "F9A1sQAQ4f/J4drwHaX+72MLA9aV9eb0//PpGN3vzhTW5oHNIhEbCxTv/fFV+ezyz8bnKg4aCwUW3gII3A3szcX/D/7f79rH9gfr5wDyGfT2GfwVv/DmKR8b3eoN3eMPuOMUJQkKEfoiwNfbLEgL6x3oBMD+7sje/BEA1eMcAh4=",
+        "scale": 0.004341933410614729,
+        "bias": -8.726675987243652
+      },
+      "40": {
+        "filter": "MPYM9PMN/wTR9gELAPr/6yIG88Xy5BbiBttM2fMC6BEA9/P07xzqA+wCCvjQ5xvXBPjrFg0H5An28ez5A+/06Mjs2vX65hoN0f8B8cbygQnu1uzSAerb/v/H/+0OAgLb6PH99Ork9OEJ+esRIgMrFf3u7RXu2w/3FAPzL8348+k=",
+        "scale": 0.0054555898532271385,
+        "bias": -5.268965721130371
+      },
+      "20": {
+        "filter": "1+vg+/gV+OsK1+gdFBfbv/YXCpT9CPri9x3Q8uLw9/v66/EJ0Rb46PDl/9IF++XfNuXj/OoQzxHq17sHDNhB/QTjAMQ8+O7j2fgG+QDsGykc+iD9+Pj14uwSD+fhHBLnLQkW6dz36s7/8LQI+QYD4eDmCPftFQ1C6QgGDu7pgQk=",
+        "scale": 0.00606714840978384,
+        "bias": -5.598687171936035
+      }
+    }
+  },
+  "blender": {
+    "method": "Text prompts blended with a visual prompt from a labeled LVIS example",
+    "reference_photos": [
+      "https://images.cocodataset.org/val2017/000000397354.jpg"
+    ],
+    "head": {
+      "80": {
+        "filter": "FvU96Q0aUb/by8bD4IHn7TUAH+cLzwrY5dD+0vXC7hjU49YZP6fiSb0E8Q1m8eDN3yHR4BvWr94g4t8INqvk3uwCNxbE8L7P9tobxOW9Jp3JAOG5APvp5E7HB+Yi9PPXDQff/+7o+bHe29Dy6lfo4Qg7LhfAzQP0KQf7D/CF+uE=",
+        "scale": 0.0035672090016305447,
+        "bias": -3.5242061614990234
+      },
+      "40": {
+        "filter": "CyAh5QT0B9fl1TPf580Evtkg6SPM+w30CQNNB/j850e9yN3cBNo9583hBgDqqcjF2N8NwQUi8vXd7g/Y6dX65If4yvYbGOPa8eS5CC3cgS4EArfxGb3suOz6Fufx8erT7SHO6N354g4iziHJ9cjvywom09oX4+zdEfYFSB8a/+s=",
+        "scale": 0.003949308302253485,
+        "bias": -1.7296838760375977
+      },
+      "20": {
+        "filter": "Bh0Z+dD53xn++wHuF+X33dsGAYHw1eDrCeoC7uYW6P8i9O8P6AX1BgcF5f726vDj2/Lz+unn6f7/+wcU+vwvA8MT8fUPC+0K7+IDEQUD7Ub32Qno1vfm+f4B+QG4/wTlz/P1AfYQ5u4M/Q30ChXx3/vt8gH9INgq6uf57eUMuPs=",
+        "scale": 0.00736366119235754,
+        "bias": -3.2126712799072266
+      }
+    }
+  },
+  "broom": {
+    "method": "Text prompts blended with a visual prompt from a labeled LVIS example",
+    "reference_photos": [
+      "https://images.cocodataset.org/val2017/000000008211.jpg"
+    ],
+    "head": {
+      "80": {
+        "filter": "F9pV8ivD8/H9wMndCM25o2L74PgQ9Nnqzu4fxPTp7g/Dz/7k3c/eJQbZ1gQ1q+nS6/zfQySBqb6/BRQTJh3o3QXI/9/dCPzwzs8WBNfny9T6CwTQ9AzP7fUO8xzSBRTQ6CYJDOUYL9QHLrbQ3AP98e8byDHF1NHa0/7W3PC/+gA=",
+        "scale": 0.0039602466858923435,
+        "bias": -3.9716720581054688
+      },
+      "40": {
+        "filter": "AxkK7wTd5w7dAP/5zRcV3M3WERXE7+3zAeMmw+f07f7qzATbIAPz/u3wuugTuwLk+/P+C/Y1+9785e0aw6faEMQuEQsM7PnZ5/7hMef5lC0F2cTdqc+h+Ojv/OUSvtIG8vj7+/UJ1gH53QvZ5+PIuPDiARAW9wvjScjMf/U3Esc=",
+        "scale": 0.004167515318840742,
+        "bias": -4.359728813171387
+      },
+      "20": {
+        "filter": "7f3M7LsQBY8GGyMX+gj526ZK8s/15OMaBvfd1PAlCf8S9fIJ6er2368hzQnv79nvAfcb4gvrMAEV8AnPVRt/v7AHHO8PC6bXl/0Kzb78zG7/tTEArAev38ScHecGuRj62wLb8fMJ6vBZ5On/LQLc9ekOAAIgHB8Bz58Qwez0l/I=",
+        "scale": 0.0040427278727293015,
+        "bias": -8.078818321228027
+      }
+    }
+  },
+  "bucket": {
+    "method": "Text prompts blended with a visual prompt from a labeled LVIS example",
+    "reference_photos": [
+      "https://images.cocodataset.org/train2017/000000288650.jpg"
+    ],
+    "head": {
+      "80": {
+        "filter": "JOwqDuzuDfAU38bUAa8A/Un0Ief46ePsB8EKBv/a9QG83NnsF/T5Ib75HNdM1sa+3g/q3vWm9fgk/sgSF+Tf6A3sCObRy8zZ8/7w3xHM7P3X3gbBJvPdI+3f2AbkFgrWAfwTHvru8br159HqCvT1+u0N5AfY0P3eJfD6EOmBzBA=",
+        "scale": 0.004429528955370188,
+        "bias": -3.4234085083007812
+      },
+      "40": {
+        "filter": "CB8syR3tCxX32BMM/dsJ0grs9wDcA/vsA/McAv/0DSzwzuDyCfXm27/uAPS+r+/n6vLRyhL9BOwP/v3o2fEe478X7RUM87zcEfy5+vsGgQ/v/+gF5OT12Qry4+Eq8tTv5fMCz/Dl0/n6BALh9ODlBPz33eMSALgBI+8BVRsLyq8=",
+        "scale": 0.0050697713159024715,
+        "bias": -2.2543725967407227
+      },
+      "20": {
+        "filter": "4vUxFuwv4/8M7tn28doB4eo14YH+y8Ti6t3bt8sI7d7WthIx7dD93gQVCbf62dnMywvm99zv/x/u9B0WNgk576M7C/cFEMz0v5IuDyzKxGro+in37fHp+NzCNAn9APPdhAcNF9Ew5fQUzOjtC/8G8vcL5+zXCr0b29nwIMwQmuw=",
+        "scale": 0.004311072640120983,
+        "bias": -5.399675369262695
+      }
+    }
+  },
+  "cabinet": {
+    "method": "Text prompts blended with a visual prompt from a labeled LVIS example",
+    "reference_photos": [
+      "https://images.cocodataset.org/val2017/000000530836.jpg"
+    ],
+    "head": {
+      "80": {
+        "filter": "8tJDFAAIGcnjGdX19K36FTwLvvG79/QI9QcR8O0K/APKAOv9ys7j5fT1o91DAAcQ99z4HOmB590IAdkBHgHaKMkR+QDUFOm3+dbcEhWSAvb68A3i8vTe5w7aHf7s8fPp/O0MCO//DvIY9psV3CH60/IW7+sH6OPpDxna6w7u0CA=",
+        "scale": 0.004991923924535513,
+        "bias": -3.793729782104492
+      },
+      "40": {
+        "filter": "GREb9PYECfj69vgO3/oG5OH9/9z6yATs//8E7Qf5EBwJ6vcYBO7r9Ob5+gf84RwD+gID58gUAAAI5P7O7ekEA7H6AQwpGsH0+fzx4hQLgR3n3fTp+c/0Cg/PCQfq7tDd6vHv5+D7DOLi/d30+NEL6/4PAtAS3eoB/vrsPf8NE/U=",
+        "scale": 0.006094539072364569,
+        "bias": -3.2802419662475586
+      },
+      "20": {
+        "filter": "8/gBE9Ut9QIO2vEEAPDvz/DyAY7v+MsbGfD35u7f8a7j6QAv7s4N+v8j0gvzBcLoIAUI+Q2+//76+qT0LA4tBdkdBA7yGvb64w33/foE/g8N2uoT8cDzDv/06wLrCe3rA/vNGgYk+ugMHvcH7Q0H9/MG3AMFKAcZ8Nze7OsGgfw=",
+        "scale": 0.006047807168215513,
+        "bias": -7.120545387268066
+      }
+    }
+  },
+  "calculator": {
+    "method": "Text prompts blended with a visual prompt from a labeled LVIS example",
+    "reference_photos": [
+      "https://images.cocodataset.org/train2017/000000152070.jpg"
+    ],
+    "head": {
+      "80": {
+        "filter": "8dcn4LXy9iIC7eTc7proAjYR2PIA0eXc/sH+B+Lt+iK89fv1AtjvFO8TwRVzAuoZ3s3Q/vW+xhAxyveBH8bb3LS+8Sm/4evk7CI06wkCDc0A9a0D7DDjBe3w5i4A6NLiIsgO+rwHsrj959LO+0b/DNIK8fr//fnjB9XmEdwC/sI=",
+        "scale": 0.0040584830567240715,
+        "bias": -3.2933502197265625
+      },
+      "40": {
+        "filter": "7AXsEwAIBgjczwoH6vDivQsVHugIAQn36/gu6/XW6Tq+F/QV87a79+ME7wn05doKArHpCQkP1wfRpfD/7M3G1oHu2e3Q3uQL+re0AB/vit+2/vDGIxrZ+8flGOsMBtPuqC39/cT/xvgDxrvC5t0N+N8R9fP2FsXD7N4PdPsp5+Y=",
+        "scale": 0.0041898940689861774,
+        "bias": 0.4005107879638672
+      },
+      "20": {
+        "filter": "+eUC9+bGEcr7/wHW7eID5NcM0YEABNoo5vkMAfQU6PX87NU2HOz0ESAH6/j0+/HwAfbb5+bv5PvUCgv2EAgxAfDv7fdK49rc1ODpHv8A6kkU7e/7zP7nAQQWBxDqBPXt+wP08PUc+Or4+e3gxuXj7g/a6Sfp5hQJ7u4ECe7rv+s=",
+        "scale": 0.006482061464339495,
+        "bias": -5.940896987915039
+      }
+    }
+  },
+  "coffee maker": {
+    "method": "Text prompts blended with a visual prompt from a labeled LVIS example",
+    "reference_photos": [
+      "https://images.cocodataset.org/train2017/000000411941.jpg"
+    ],
+    "head": {
+      "80": {
+        "filter": "FPB/+/L1eqv+1qXG2abQ3AkKERPg4AP46p0U786tKCLKCdRAAqPZTrjqw69AzQ3nzSgBwcaFweZm4vvmN7wIENsHKyzA87bQ8Qwf7rmuI8HkDsLD3gTVHkui/PA+/+UJHQUMBcz26pTV89AC4XDi3xBBENfyyc/mX8PfG/+j3gI=",
+        "scale": 0.0032174019142985344,
+        "bias": -6.2973833084106445
+      },
+      "40": {
+        "filter": "5Tgj3hfV+9Pyzw3yR83eyOP2BiDv+Br0FPwoDQv1/0yrv7XsAdMc1BUH1jLcl+PDucoCzvMF/83M9Dzh4uDw4p0AxeoXFbrICLiY4C38gVESCfTpIbwU2A3jGsgM7t+nuPbf++n8BeMM1Q7UzdAN0RUg1dck9s++0/UFZR8wu9E=",
+        "scale": 0.003565259510651231,
+        "bias": -2.3966073989868164
+      },
+      "20": {
+        "filter": "AQIbCc3y8ib6/wW+E8n6+bnrAIEAyNMW/Of04/j+++EbBRID3PMGABkSE+gS9eTHzvn3/Nre4QL4KfwK+QgjEdgl/f4p+8n99tkIGQoJxGHz2/fuy+vi/gMQGOjT7f72uQfv/vUu6QsZDxMF3APm5+r+4w/8DOgaB/7p3uAnsfA=",
+        "scale": 0.005905777681618929,
+        "bias": -6.3151655197143555
+      }
+    }
+  },
+  "coin": {
+    "method": "Text prompts blended with a visual prompt from a labeled LVIS example",
+    "reference_photos": [
+      "https://images.cocodataset.org/val2017/000000370999.jpg"
+    ],
+    "head": {
+      "80": {
+        "filter": "/OXZ9esBDvbS+83FBqcLBC8C2PP13Pf/4+P2HBwbBDcI8OUP+xsVOOEb1NVZEvEW/ukD7PGdB/8C6d7t9erT5u7H+vve4Ofo7R7i9wYKDQ7y0db5yv/s1/Ps/fPV3Ano7dAhCgEL6PPq7czgNkUt9oEN1g0J/OYU//z59ffeJhU=",
+        "scale": 0.004892779979854822,
+        "bias": -5.842537879943848
+      },
+      "40": {
+        "filter": "3zkjAb4X8xri1wQPpezkvO/7C9/t//PK/RAl7Af70yXWOhku9gzd/eoT/t7wuw7y2tX6wwAhz974FgIU3ejd4qHe6Dbhy9zyDd/vERYHge3q0t7ZFfv61Bj0A+gI7vv04PjxxeX84tPfBLL2/QIK7vLSDdTk5dDO+QX4WPMeEtk=",
+        "scale": 0.004375848453491926,
+        "bias": -1.843592643737793
+      },
+      "20": {
+        "filter": "3foB/9rfACns58zVEN/P5vkoAoHa9fcU9uTy1Sb7+OXy9gA58t34QwQLxgHN6/X/HPrm//jnyNTt2QXjHQg/LuTc9NkHBcvvtrT6BA20IS0J5gkF4OTuve4v29wMBuvd2v4Z7e0oB9w2BNPvwQ4A6QAW5vb9BzhK2BDhBNkUkws=",
+        "scale": 0.004885214380919933,
+        "bias": -7.249236583709717
+      }
+    }
+  },
+  "curtain": {
+    "method": "Text prompts blended with a visual prompt from a labeled LVIS example",
+    "reference_photos": [
+      "https://images.cocodataset.org/train2017/000000244635.jpg"
+    ],
+    "head": {
+      "80": {
+        "filter": "FbpFLAPrEbrQzAjw85gM/lkR5N6+2en4ufncD9e//waf94Hc0v78CP7vCeB/++feAKYUEeKh8+rg9Mbt8wz50eAZOOnq/tXUz/UmIwoaCvjcDfTa1+7uBBnuGgDD+gixxw0a9vXTEt4p/df2uhYe2xrrCNb5AfzlJSy+HAkY3+M=",
+        "scale": 0.004280386958271265,
+        "bias": -4.913311004638672
+      },
+      "40": {
+        "filter": "D+/y4e70DNu9DOIL29f1y/YE7aTqA+LeERNT6//sFTL4//wAuQX6At8ICxLz1RneLNPz/Af58h/V7//I9sn2DbDq9tslEOv64xAG97r7gf714eHa/tXt5wXV/dIjx+vfB7npGvXsAr7yyQYX3QL35xP8AfT86/j/FwzuTOnU/N8=",
+        "scale": 0.005169726442545652,
+        "bias": -2.0350475311279297
+      },
+      "20": {
+        "filter": "z+jAH9U9Ddj9yfUTCA7pu/rQBIH14+P3ItbkvQnczKXzAfr7/eIMGe8U6dYF3dDl6+f3BNIJ0urs4+MHB9xU3e0a59hEDfgA8hT83eD5NvPH+vPmzfT19fPmBOXH3TL//f7LBdDZ/PIbItHXDSsX//744A/jLd9I8grtBcD+rBM=",
+        "scale": 0.005547421984374523,
+        "bias": -3.339259147644043
+      }
+    }
+  },
+  "cushion": {
+    "method": "Text prompts blended with a visual prompt from a labeled LVIS example",
+    "reference_photos": [
+      "https://images.cocodataset.org/train2017/000000239013.jpg"
+    ],
+    "head": {
+      "80": {
+        "filter": "+9A1kfPLoRYQwuXcIYEJ/FoR4/jZ4AwgqOIa/83txxflAqfP5QIZSOPS2OtLnJ/S+9T+Quu1sf/y4O3jDxLY4sgXytgQ8tXN6OAX3SPvA87WBP4K8MHoFPn/Dg7w7vXXjOcyIA8NZMr4793/vF8x1hXE0eraD/DMFLrsDOzssAQ=",
+        "scale": 0.0036098849959671497,
+        "bias": -6.665406227111816
+      },
+      "40": {
+        "filter": "CwUk6dYF5OfCIOQSAwT/6ufc6Lfl0BroABhD1gDe3BcQ7gvV+C31//AF89e09gzsD88MBRjp4Pf56vz+9u3rzfQBDQAB/xb6svDy9tgjgQjl9e/e8+Xv+v2r7+r10fr//wT77QLH89/20/m0COcBLvfr+wEZug77DfMAZQgS4Oc=",
+        "scale": 0.005040143150836229,
+        "bias": -3.6321182250976562
+      },
+      "20": {
+        "filter": "xdbfGfEUCs741fHcON3G/eAC46joAgPhD/KzyNLU8+vjHO4B4QAQ0uETObfw/dfg8BQCBRH76u/42aX0Deh15/0HBMo/Cb7L8uoZ7wLrCi8GExYI6Az7+8kAzPPp99/j5A3/+h337Loh4r8a8fMkCSPf3vkbEvME+hjjyM8Uge4=",
+        "scale": 0.005078204907476902,
+        "bias": -5.693164825439453
+      }
+    }
+  },
+  "diaper": {
+    "method": "Text prompts blended with a visual prompt from a labeled LVIS example",
+    "reference_photos": [
+      "https://images.cocodataset.org/train2017/000000566704.jpg"
+    ],
+    "head": {
+      "80": {
+        "filter": "MvMbqO7r5Qbr8gDfGow1J20FDd6587fc5Rfy99zsyRr11IHJHwv5FQ3gKrlIz9TY3a3u/v4H+CoPzN4c38rf0fDnB/bPytnTDiLtvev0JAYABQEj0grg9hP9/N/ZBQK+v8kc+/wWCeYMyOXBCytAyP72+Qn74dXV+DclBP8J5fQ=",
+        "scale": 0.004433504305779934,
+        "bias": -5.433387756347656
+      },
+      "40": {
+        "filter": "QSgBAv/g8iLZ/BQgy+T+uxcNw8vX+QnZMuho5cb7+AgJ+tLq2Rv+B6/gHc/GpA3UOe78EA7O1gTk7/D0/frx7orj0wsK8vTo8QbtMs3Wgb/0BNveGAcC7A7XENYsAgT98ALZ6+6/w+rh+jDsAtUcEeb+CPnU79kLDuPeRsPMBdc=",
+        "scale": 0.0045984541065990925,
+        "bias": -2.843189239501953
+      },
+      "20": {
+        "filter": "5O/NHOwb5Ar0Bwj99O4CzCFH44HxFdfW2/Hd+NvvvvTg+vcp5fEM3hEa4OHv2/0GFPve7ssA5gX49OsgCgY5I/cS290zEwjk4N/18gj9JxXyFDX9AN7r5O8JC/HrAfjlGwwX5dzOANQA7ML+Cg4X4wXtA+ToB/o1xQPiJuEPyQM=",
+        "scale": 0.006556443404406309,
+        "bias": -7.584377765655518
+      }
+    }
+  },
+  "doorknob": {
+    "method": "Text prompts blended with a visual prompt from a labeled LVIS example",
+    "reference_photos": [
+      "https://images.cocodataset.org/val2017/000000452793.jpg"
+    ],
+    "head": {
+      "80": {
+        "filter": "CPTg9OTsO/EM1+fyHa4CGi4j9OvkFLshtcwuBujf2RqwDNrk/xDo5+3+ytgM7fTm9CMwI9+U6AXd6e/1Bs3I9IHe0+XQ7u7F7foK9OTtJqT19/uo2fTOxRrF6yjYEfm8EAgP+CIY7NMc67j+6iI6Ic0O+OoAueToS87X9NPLDcI=",
+        "scale": 0.003833016147837043,
+        "bias": -4.79868221282959
+      },
+      "40": {
+        "filter": "Hfb6/Skk8uboLwf/9Rrl7RP+KfDw8/Dc5wcp7frUDvLG5BMVDuYe6OgbCQMK0gbx1tT52tsd8OL19Qba16MM9MT/EP8g9eXkzey+7PIngdv2yuXkCPQo+xrx0dob69b+2dvkEsTk7fbn0w8E3/732AwWEd4F6qfh7uwZcxkC098=",
+        "scale": 0.00457074586302042,
+        "bias": -4.133322715759277
+      },
+      "20": {
+        "filter": "Ov7EHL0AE+r05wL37w8M57f8mort5NA8+8D90rr25LXkvxD+IbceHDoTFu0C06XF1PkLGrPb1NYMBvsnB9Z75a8l1OL1HPER2OsxAgEZASIU7ib1tOH81PQtyNjk/Lb84V3R6eM/w/nq5+bTEEveFgcA0RniFQo25BII8we/gSQ=",
+        "scale": 0.003421379718929529,
+        "bias": -7.59585428237915
+      }
+    }
+  },
+  "doormat": {
+    "method": "Text prompts blended with a visual prompt from a labeled LVIS example",
+    "reference_photos": [
+      "https://images.cocodataset.org/train2017/000000378890.jpg"
+    ],
+    "head": {
+      "80": {
+        "filter": "+c0J4Pe7+Rb4pdDOBpDZyFEQywrTu+ILAuMFHcsR9BHS5OPA5vsNKen31MB/28vt2NQKNQzZ2tfR8c7L+P4q3/H6BvDl7/zn7gv52toK8wvx784y6vDpGvEp4OHbAujn29Mu8ecZS9wP9Nn57zYB+LLvC+7c++Dfzc/9vZsEDT4=",
+        "scale": 0.003994046710431576,
+        "bias": -5.092620849609375
+      },
+      "40": {
+        "filter": "5x8b8fEMAhDV/vYUEPv61O8A/8L35f74DQM/4+zZvS8K/hr5DxrCFgTm2fLk6Q339fX5Gf36wf0J+xf158X03MwE7g3X1wkACer0DwUUgfH54eXK+yitB9/e2f8ave/W/QAA7vnq3Mv99rro9vzz8fzz/fn97QfbKOrmSNgHztU=",
+        "scale": 0.005256177857518196,
+        "bias": -2.705836296081543
+      },
+      "20": {
+        "filter": "0vX8Av7aGKXyz9QEOuwC6d889p/cBgII4+wB2w/pBvAME90b6voF/swWENXvDPjm/PX33ggK2OsIyu3oJuBYEiPvDfVC17nZ4cvr19bo/TAg6SUT3AT39dv9S/sR8/7TFBsRyOQi9Mgt0r3/2/gH4gL99A8F/wQV9OoGy+YBgQA=",
+        "scale": 0.005454848986119032,
+        "bias": -7.238595008850098
+      }
+    }
+  },
+  "drawer": {
+    "method": "Text prompts blended with a visual prompt from a labeled LVIS example",
+    "reference_photos": [
+      "https://images.cocodataset.org/train2017/000000293723.jpg"
+    ],
+    "head": {
+      "80": {
+        "filter": "4/Yu2+na89YhDMLp/qztNUIaz/a8BOoW9PcVAuoKAQT4Gu3vvCn5/BX+ttj92+z09/HyN9e03tT97vblEvfYL9cY6hfq6O/i5M/75guBDfnu/eMAE/7i7QDRHfrMC/C979gcGhckH+wY+JQy5gMHywgFDPMBAtfs59z06OEPrxA=",
+        "scale": 0.0049605644308030605,
+        "bias": -5.2610015869140625
+      },
+      "40": {
+        "filter": "ERL4F/4NGBnZAOAw7d4O4M3w++P+tgcHHvQJ3gvR/wkP9PQXCiUI/QwE6Q3x6hTgCuL9673JHOcF0vzK7dkSB9gT/wER98fpDd7tHPQNgd319fDg9csBDBHNG/7yBN3r7wvixOjzB93tAOHvANAGD94AFtAatf77A/cVXODz6sk=",
+        "scale": 0.005291798617690802,
+        "bias": -5.144975662231445
+      },
+      "20": {
+        "filter": "y/oIGMsa+egg+fPDAdXw8N8A5I77/ssmEP3d7ebwD7yg4gwi69whzgT6AuYCycfuH/YF79+zLAT6CIHSIs1FJ8QA8A8mAN/v/N8OF9/37iX6wfwV76PcIO/tBCUL+QrWBDLoCAIYIuEE9uMA6wo28xXr3v4e+vvo+ODdAdgIovo=",
+        "scale": 0.004834729712456465,
+        "bias": -9.54461669921875
+      }
+    }
+  },
+  "dustbin": {
+    "method": "Text prompts blended with a visual prompt from a labeled LVIS example",
+    "reference_photos": [
+      "https://images.cocodataset.org/train2017/000000152529.jpg"
+    ],
+    "head": {
+      "80": {
+        "filter": "Ke5tDu3KDOIn1MbtCKPy80EvDd7ZzfsIwcjmD9fY1BiBxdsJ5eP2F8YB7/J2/9XUwSb36ATv2b885sEI9SgV4w/YUebM9Lru38HP/Qyv6/HS1wSsDAfjC9fNryPl/Sau7AEKLdXWCNj40LP55+sLCegd//7XsQLDM+D7ANyJ4uI=",
+        "scale": 0.004107089247554541,
+        "bias": -1.8702878952026367
+      },
+      "40": {
+        "filter": "7A8iqvT1Dhbv3eQE+/sbuSPhBznw4Mjf6sozFuq/Sn7a0AjhAAAJrsrlBvqiluPL6veh3Ob26vjk+gLPrM4s9ZcF3N3p9L7mJvuB8Q0oikr636n41NYF0PjJw9s2CK/D+svn0e/h7tXi3+sB7L7S9f4a4cZC3LnkUdgJcfkOtqk=",
+        "scale": 0.003615976544097066,
+        "bias": -2.4947404861450195
+      },
+      "20": {
+        "filter": "BeccB+YwAPgF4vIP4uP42ukP24H16N/U+e3kyvADEPYH0wkK4NX3EAIq/9UF4srM4uD78fPi7gMC8vIENtBECOwtHAEF/fgMybUA9Pvw4VQM4RTbAeXeAOXCOPf48v38vhT7/OQg0PgH4RDnDxgF/v4N0Pv5/dAI1+YEDtny0P4=",
+        "scale": 0.0065420460887253284,
+        "bias": -5.515900611877441
+      }
+    }
+  },
+  "envelope": {
+    "method": "Text prompts blended with a visual prompt from a labeled LVIS example",
+    "reference_photos": [
+      "https://images.cocodataset.org/train2017/000000085171.jpg"
+    ],
+    "head": {
+      "80": {
+        "filter": "4ujzAu/J2QwB8Ojg04Hzz1ng0fbE4eUj490g/gML7Q6YG8nYyBsUA9359uQj1vzB+r7iDLnK6e8ACcamC9bm4fMg+5LJ4dPh6xz/+Qnu5w/+BPAzBf/w4P7oMvDMuN6qzeY+F+YK+QHf3d0SFv4J9ffeAFPj/NjM+RQZ/eMnzlA=",
+        "scale": 0.004380440339446068,
+        "bias": -2.0628604888916016
+      },
+      "40": {
+        "filter": "Cf4W8+4P7//L19Usv84NuO/p7Yj1Af3xCOZY4P/O1Bgq++LK7ke/OfUx+//f6eoG7csHE/3F8ADoyO7o2Qv296XzExYT5cHWFRAC9/zvgczW9PXBwh7Y7AKYy/IdxPHp59Mq+9nV7PHPu/vFwvjRDt4N9OL/6g7z8w/LcAr8G7s=",
+        "scale": 0.004517616704106331,
+        "bias": -0.5894899368286133
+      },
+      "20": {
+        "filter": "zAkaDNsOAesTCeADBMnx3vga9oHR/uT/D9vU6OPu+8fVK9k35Nzy++4z4dX9CMre+jEQ39Tf/9oO+eHaOwNHzfz62uVHB/fIJtII8/kFGwjh/Pb06xPf//rUEOz7/+/CKiECC921Gbj8DLX60dMnAP3sBRD6+ADv9gjRw+MSzu0=",
+        "scale": 0.005878251511603594,
+        "bias": -5.165316104888916
+      }
+    }
+  },
+  "footrest": {
+    "method": "Text prompts blended with a visual prompt from a labeled LVIS example",
+    "reference_photos": [
+      "https://images.cocodataset.org/train2017/000000427965.jpg"
+    ],
+    "head": {
+      "80": {
+        "filter": "Cug3ge4F4hv36ejFD4gj/04Q6/PUCNrxKOQU9uj60RrGvcvFBBM5BP31yNB64wXR/wD9FS/wxwU5GeD7EQ704rkS7+3QxMq40OTc6gSdBej/3g8DAfPkAMzz1fXI5L7V2No2CCYgDNoRFefl50wl8v/c/rkG2/C07MsS5qv80DA=",
+        "scale": 0.00388671038672328,
+        "bias": -6.210101127624512
+      },
+      "40": {
+        "filter": "OA8H20Lm/AXF8f0vAgsRzvny1gbgtgQN9fwP3PrX5iwF/AfuEvO45vL3KMLV2R3u4P38Awv75Q0O3+7h7twm0KQO2STP+ckH1dfO8vYHgQHW7eri6x/0GBXZ8Af/4gzr6Pbx9eXcxuwg8OTY5eYVOOYRBv/squAB/QMFVOMA290=",
+        "scale": 0.004685673862695694,
+        "bias": -3.626164436340332
+      },
+      "20": {
+        "filter": "7OTxFOPvBQzf2+kSOMsE8d33D4H1H9jf7PXo/9Xc7xHg3O9C5/4Nwv8U5+fvANfdDgwPBv0I4BAJ177yMc49BuoVHg4mCtf02tMAAv/+/ilZBS8Q59r5EdcF+P8G7hDXBhAL9wEUAr7js/318e8C//vk3hHn+O4T8/P8/vb6sN8=",
+        "scale": 0.005713585764169693,
+        "bias": -7.832281112670898
+      }
+    }
+  },
+  "grater": {
+    "method": "Text prompts blended with a visual prompt from a labeled LVIS example",
+    "reference_photos": [
+      "https://images.cocodataset.org/train2017/000000468095.jpg"
+    ],
+    "head": {
+      "80": {
+        "filter": "A+0Hu9WYRPsK5+DoFZbR6DgC8fP47srw5LL7KerdHgfnCdvz5PnuE9X0ysVCy9Xq/9wM2tiBB/cS8dS2PcbW18LY8xC0CtTp0/RM7e/zD8/wAr7T1iLi/w4BBAII1vW68OYN8ejnJsUDGc3X8FIS8tw++Ovu9REIFrL0Devq270=",
+        "scale": 0.004115286748856306,
+        "bias": -1.146662712097168
+      },
+      "40": {
+        "filter": "AB0T//XU88zm6PQSBgovz/DzH974+gb3Ahob+gDz+Be7BOwVBdoW//YP5fDus+b8BMAMB/Xz8ObV9CD43cTq3rIByPMC7NLV78PdKf4Kgdvl+NIGG+kB68jrAgEZ7drevgfD/Oz20O//5PzO4dfc5xIVCAMX3tbFGQEIdgoOs9o=",
+        "scale": 0.00479745352640748,
+        "bias": 0.43062496185302734
+      },
+      "20": {
+        "filter": "2/rsG+PbFLH2HPbDJO/38cYE3Zb0E8tG78kG7PUV6ewX7QT/zeEAx+c4AODjn+DK9dgG6MH47wfzExzw8PVIJ9Alx+ZA4s8Z3d0FBwXv5n8E2THw2/X29v751+D/1OvPyxfp/g8OAh0QDO307hXa0TAB6Snr9fr08QD4/Lzbpws=",
+        "scale": 0.005122086498886347,
+        "bias": -5.649744510650635
+      }
+    }
+  },
+  "hair dryer": {
+    "method": "Text prompts blended with a visual prompt from a labeled LVIS example",
+    "reference_photos": [
+      "https://images.cocodataset.org/train2017/000000179793.jpg"
+    ],
+    "head": {
+      "80": {
+        "filter": "6eMdAqjfAu0LrNbl/6AC3/oiEOu86MTY6tLkAtjr4hS0Ady5+dviItDj1eIt1OvM2OzqF83bzu7J9u3wRdHh4MXTGtjR8vm9wxU0AAXwCNOtBuOx/z7BB/jW2hLDDc6uBOEJEwohzdcR0/fg9DkX9/X66BHOBA4Mf/Eo/+658tc=",
+        "scale": 0.0041559305973351,
+        "bias": -1.4626855850219727
+      },
+      "40": {
+        "filter": "2fMb5QgCCdna1g3p4fcExPoTA/XU3B7cAeVV6d/w8wu+6u/iAuq23OLq3hP8xN/rNdPW8fj9AvHv7Qz/5LcE3r8b3OcS18/UD9bM0t0UhNzY48vx+vIxxdLt0don/cjR0ebTE+bf8wcB2xj0wvPz3fQx/bnxENLv7Ob5f0MW8vg=",
+        "scale": 0.004566261079162359,
+        "bias": 0.5459451675415039
+      },
+      "20": {
+        "filter": "8PAQHxf88PgTJAHMGekA1d0QyIEf4PAIBcoE4dwY7eAH8QAs8Of6EQtADPHi99Dc19T2A7rz3O/99/ADGfxe6OY1Au8Q/9/szgMD7wMy6zXu2v3zuM7j3hEV7ALgBPjtyAMaGc7nv+YW8fTrDLn27hME3Pmr8/Il/gjx/97vvwI=",
+        "scale": 0.005535592790693045,
+        "bias": -4.529153823852539
+      }
+    }
+  },
+  "hammer": {
+    "method": "Text prompts blended with a visual prompt from a labeled LVIS example",
+    "reference_photos": [
+      "https://images.cocodataset.org/train2017/000000303592.jpg"
+    ],
+    "head": {
+      "80": {
+        "filter": "AALj+LvVBEXz1ObpB4HrvBju//b0/pzQArgq+RbZJQLP1LSf0viy8grg4/sntc+69t/wXvFEvhK66czpT9G79MzQ6Ord4foTtcFO47rhG728EtvA0lmZFMf28vCrBee27wDW6gFQ+Pb/FNK7B0r8DhcHuS7u2Q4RR7+f+bvo8PA=",
+        "scale": 0.00349059677682817,
+        "bias": -2.427936553955078
+      },
+      "40": {
+        "filter": "AvUbCRz/4/rkBu/17wHw5O7y/wHqAv4HEAAm1v/x3+cF3gn9C+nR7/Lx4+4kBPvkBNH0GwcLE9z96/YX77zbAPwO2/Hk3djc/ODj5PUGsvPl2/P96BLY7/f26P0jBdMD0v8EAdrn9P4M9Szi1uPhz+EFDOji5t7iF98Qfwkf7OY=",
+        "scale": 0.006475594826042652,
+        "bias": -1.0511064529418945
+      },
+      "20": {
+        "filter": "8/v+6P/c8aYAHBbdRPcazK9Bq+kk/ZUMH/Hz7c0m6QD4AP4O5xYCvePrDgTb8dkV0/YF983P+Onx3wPGWfl/z8AV6+ElxsjX6SwW+QAvzmH/xzICl+z06+YCDvIy2AvY0xUM2Nbesxk6sbzU4OnP6wfp7xmS0QnzCtUT9vHOswg=",
+        "scale": 0.003971823491156101,
+        "bias": -5.035406112670898
+      }
+    }
+  },
+  "hanger": {
+    "method": "Text prompts blended with a visual prompt from a labeled LVIS example",
+    "reference_photos": [
+      "https://images.cocodataset.org/train2017/000000302603.jpg"
+    ],
+    "head": {
+      "80": {
+        "filter": "7N8iQPDbBuna18zwDogZjmMF4v/T/frhtdPy6yTI4yq957fD4+rQL7fxgclyv//VIb8A+9as7rm7/sgFMe3g79jHAOLt6RjLtPk08K/a4S3w9NUD+Ay32ga32AKrFsvQ6UMiEywp9PUTI9zp0QgiL/gs5EPyGMP0O0LiF/TvYmE=",
+        "scale": 0.003422216745093465,
+        "bias": -7.017771244049072
+      },
+      "40": {
+        "filter": "FBwV7DMAH/Lb/v/x0ugK0a8eD+fd9Qr0BPIh/frv5wjx3vDjDADP/vgDzfMF3BDjI9kH+vsl8fHl3uoP57/QErYS/hj57fjQ+uzk9r3vgd394cbatgfn9knC8AI12NUL0dUWFBIWDevd5x8LtPbq8e3yIsET4u7ZBwDjYgwXJwc=",
+        "scale": 0.0047921487130224705,
+        "bias": -3.59442138671875
+      },
+      "20": {
+        "filter": "yccIRMH+/fEJ7fnwFdrmrKAt4oEqw91e68sBmfLj5qvf9gUiye8r/e0lqyPrwOg07x8eAarc9ejV7tbmYxBWp/4F9QdoUhb6uf0k7N4C5B7Kt/4Mhqu5xvzdFesRwDUQxhQMFNXb4LBrDOX54dz4AvYNDAnQLh4lzBPMx/8cjQk=",
+        "scale": 0.003461140440776944,
+        "bias": -8.036674499511719
+      }
+    }
+  },
+  "ironing board": {
+    "method": "Text prompts blended with a visual prompt from a labeled LVIS example",
+    "reference_photos": [
+      "https://images.cocodataset.org/train2017/000000524766.jpg"
+    ],
+    "head": {
+      "80": {
+        "filter": "J9sP2vwEStLXxO+0DIEP12cirPKo3bvzzd8N5O7IzP3mAbL3DOLtSOjyz+JjB93Q5uIJKOSL3u7Z7cDeGxrW4MXqIt3XHdHP1+kCBuAN9fL6/BS54xbN8Qfe2v/aCgKx9e//G9kt/83/y86860b77gkr/ezL6bjR5Sn44dXo5yM=",
+        "scale": 0.0040019480511546135,
+        "bias": -3.0413036346435547
+      },
+      "40": {
+        "filter": "+wsd7Sb8/Onl3xAN5PUWzesJAu/U6gXgAvgq9PALLBTk4wok/RsI99oRDQL8xP/mBeTn4P8TzQX15PPZ8cfPBq/w5/nu2+je9vrV+9Xwgfn38+Xl3eXqBCXQCewS1fDq4P31GPbc4OAB+d774gIAzfQa++z84+rjFfHlUxfx/9o=",
+        "scale": 0.005960887763649225,
+        "bias": 0.37286376953125
+      },
+      "20": {
+        "filter": "7u/0BOEF9hAH6gcMFvfjz9f99oH+8/gt8e7u5ef+8O/2xPkiFvT/CvgJ2+D1yNTw+/f289zu9RIE9t8ZK+5F8PIY/e8g5Obv1cQE7PMJJRIR6hX+0djo8AXp/ujh6AgC0BgD+ub7+folBNnn/Rz67eoB+/ztDOwd3uwL+eQEpv8=",
+        "scale": 0.007010962814092636,
+        "bias": -2.933626174926758
+      }
+    }
+  },
+  "ladle": {
+    "method": "Text prompts blended with a visual prompt from a labeled LVIS example",
+    "reference_photos": [
+      "https://images.cocodataset.org/train2017/000000039770.jpg"
+    ],
+    "head": {
+      "80": {
+        "filter": "2+/9HwO+IOPt4NjDEK8Lpzfv+vEbAszlxbzlLhe89ynmDgoE7RTR4dv+sfMNqu2qAwvkJezI39GuGeAWLewC5tLM+tXNCM3IusRHBtrgFuvK++TQugPU8zW/COyG3/jU3yv8GOMVMLT0QdUT/kQV2tMi6kjg8/UYMMfSC/WB9ig=",
+        "scale": 0.00337555562146008,
+        "bias": -5.295351028442383
+      },
+      "40": {
+        "filter": "GxQaEBAGCM/t7+UE8wwQ2dfoA/PMDOns/xU35vv27ODR1wfTIOPj7/MVwQgWuw3x4swewQ4aFLP1Ee795rzwAsEI8vsPz+fL7OPaAOMAitXk577JwPL8zwH81P4Jv9398dzy4tMO7/Lv5yvszQDmzwPxBMEh0ODxKPb9fywa1t0=",
+        "scale": 0.0044975364580750465,
+        "bias": -2.0259437561035156
+      },
+      "20": {
+        "filter": "r+sDGNHF0toeJujBOrz46ooK1I8Rrvo4RawDgcwXAt+o5jjeqtcZ3df09Tnp4AX7zCRI7svY/cD39wjmQQt1yo0K8PYXCM5FxyIb//rv7Fnlv1TbqBe3s+LZsucCyuvPsyzr4eYW1ekxCNbsXu7dwQLz1ALPNfQT6UMBwqYIrAk=",
+        "scale": 0.0034669802989810705,
+        "bias": -5.857890605926514
+      }
+    }
+  },
+  "laundry basket": {
+    "method": "Text prompts blended with a visual prompt from a labeled LVIS example",
+    "reference_photos": [
+      "https://images.cocodataset.org/train2017/000000046029.jpg"
+    ],
+    "head": {
+      "80": {
+        "filter": "E/Z809u85/kVGcDzGYHMDnoM1eu41eUJ8Nr0E7zzwP+OC9bdFhcOE/vcycUnwqzH4Nnu7eLa7OYs+Mn5QxbxD937BP3P5+Lax+jd7xiZ2zXr+qjx6y3hAeLk4ee0/y+44fI0F+cKLc777dXf2B0C5vfb9unW/eugFPYP58bvqRU=",
+        "scale": 0.003969627898186445,
+        "bias": -2.1217212677001953
+      },
+      "40": {
+        "filter": "6gkd2fvkDwfo1QMn/Bkhxw39/u0L1/TuCfYZ8PPmCSj8/+QCByHU+uXv5f3Kvg7aFePZAujfEQ/08A3r4wr+4dD+2wIH987u8eHk+/EHgfjV8d/u7uQCCODI7AMf8OTa9gLrzwDm/+roBvPn/tUED+kDEPQw5eXxEfX5Tc749bY=",
+        "scale": 0.005958875175565481,
+        "bias": -1.240793228149414
+      },
+      "20": {
+        "filter": "1NoNHAYoE9AQ4fDwCsXl5fUb04H/IOTt6PT2xfb5+sjk5/wt3Nnx2v0nA8L40tEBKuv53976+AAP7u8OMexQFRApCf0iA+Xow8H6+ura5Uv58g314NbwDOPLFvT9Bfr35wMHFPkB7eToz9gHAPEd/BP/5AsO7/wE/f7hAtX7qOc=",
+        "scale": 0.00605142954736948,
+        "bias": -7.913304805755615
+      }
+    }
+  },
+  "mattress": {
+    "method": "Text prompts blended with a visual prompt from a labeled LVIS example",
+    "reference_photos": [
+      "https://images.cocodataset.org/val2017/000000065074.jpg"
+    ],
+    "head": {
+      "80": {
+        "filter": "AegymQEv5SfEDu8VCaXs5H/j4Qy97+oUvQwLBNEEzh39FYP6E/wBCBnE3Phl89IR6u4JNfTu2e76yP0C+hL/1q35C//vDd/D6u7THfXdAuoKGOcyzgkF7QgH+ubs4+gMuQr5U94HKOIPyOfn724MDxHeAdTx/f6+7AQb6P8+5QQ=",
+        "scale": 0.0041823191568255424,
+        "bias": -10.961060523986816
+      },
+      "40": {
+        "filter": "JwcUBtEm/P2sA+sF5TES7PcJEdYG2zfN7etT3OcM6wkFCP/rEBwKG9IT+tC6JRn3FuL6Eu0W4vbu8gYb6/jY68vu5ezxBhUPwPHn/6LngRjdy/DM/NPh9AS17wsV4ffx0/H2D+PjC9/w7NPOLw0+Gvz/CRbouC/rBgH9P8MZ+fM=",
+        "scale": 0.00456282589584589,
+        "bias": -6.098825931549072
+      },
+      "20": {
+        "filter": "4NjJD/MR+wHp3AT3JPbZwPAC/pz/NiPeDAjF9fL94fT6E/T87fQEyPL/B+b6JNryMuID8/oC6/zs4KsSLsg+/RHi98s2Gvfu5eUL1Q7zFDAN5Q8Q6QwG0wv+2eLhHwkBGP355Q396bgM7rUM5QT0APPIAwQKFRouCQDj6frogfc=",
+        "scale": 0.0059193456545472145,
+        "bias": -7.614538192749023
+      }
+    }
+  },
+  "measuring cup": {
+    "method": "Text prompts blended with a visual prompt from a labeled LVIS example",
+    "reference_photos": [
+      "https://images.cocodataset.org/val2017/000000102707.jpg"
+    ],
+    "head": {
+      "80": {
+        "filter": "rQTVH/yj8/Al19rhyoHks0HJ0ekL49P/9rjTQi3BBh6CQCXY+Ek36xHs7tH9zMzn/QWum7zw8wTx8LnJObAJEO8tq9vX16fRvgo13Bbk6k7SJuTg+OrB+DvWBBaoAPuLwuMkEfEzGMXF/cof9Coq0goULkY1/xMlDrDK/d6+zAQ=",
+        "scale": 0.0031574703752994537,
+        "bias": -4.353795051574707
+      },
+      "40": {
+        "filter": "xjP+x/wRIufw2fQ6Fewgy+H25Kv27u78F/8h6vvd2vws9AjFEA/hEhQKEwLt2PHv4MsK1wPxKM7OBAbg5twSA7YJCu8T9MvSAtH2/trigcPc8+v96+3swe/Puu3998/5Duzk0OHt/wcB4Rzpzb3VCQvuBe4h7fPEERADZjEFtZ0=",
+        "scale": 0.00415077107027173,
+        "bias": -2.5765724182128906
+      },
+      "20": {
+        "filter": "o/EvGerx5NQp++PWILn0Cq37CoH14tEiBdHmxM7qKcDE+wTxxeo0yukXD9r2u//JxUAw6tzL8d8nERMn6Cg+BuIT7+0N8+vO9/YSFijp/17F8Ubs6QUKBe7UEu/+1trP7Czr+9X1B9358NzLCPIM5hHv5fbsxvj+DBLO0Moosgk=",
+        "scale": 0.004197133705019951,
+        "bias": -6.150577068328857
+      }
+    }
+  },
+  "microphone": {
+    "method": "Text prompts blended with a visual prompt from a labeled LVIS example",
+    "reference_photos": [
+      "https://images.cocodataset.org/train2017/000000175011.jpg"
+    ],
+    "head": {
+      "80": {
+        "filter": "2DLJ/MPP5BcA0rIDQYHs/gQt8ATO1Z7Zx9IW6A+X5AS75tLZ0BPm8QXpB/FZvFyw6OfnG7np5wPtBOvbL93ZxN7C7dve78fEmh4m88YaEr36G+T8C/zgPAvbzTDJDcPN+8veCAIb7bn2xd7hLnsECfz3ygG86eLyRKEf9sq93Sw=",
+        "scale": 0.0034165955148637295,
+        "bias": -3.286569595336914
+      },
+      "40": {
+        "filter": "8QMz9Q4CA+rcuvXxIfPv1wfqHuwF5Abl9cs96N3l6g7V9fTQFPnB3/X54iAM1urx7en0BCH5Cwv3+ewP3MnW3dvmBCsGwNXe/svY6+P8gd7Z4MX+/QD4/9L2+PUG69XsyegVDePq5QAIwhQHywcF8doV9tLx7ewBBO7tWC8Wq9Q=",
+        "scale": 0.005197508260607719,
+        "bias": -0.06970882415771484
+      },
+      "20": {
+        "filter": "9Q/e5AuXHdT1HeXgGtTx38kP54ES4vkfEOrT0Mvn6An7CwtFI/XdB/gPMOD4+urM+Qf3+Lbhu/Pf5P3cRfJT0P8aEdxM0N3R5QPzGSoY2S8Atw36u872zejoSe3u9QYGuwwY+N0GwPkC6+sGDrHoCAkPAP3f594l9goL9935lf0=",
+        "scale": 0.004871914628893137,
+        "bias": -5.6493821144104
+      }
+    }
+  },
+  "mirror": {
+    "method": "Text prompts blended with a visual prompt from a labeled LVIS example",
+    "reference_photos": [
+      "https://images.cocodataset.org/train2017/000000252608.jpg"
+    ],
+    "head": {
+      "80": {
+        "filter": "4qETERIYZdXsKtzqxYH510TY5u3Hw+Yq3v0gDey08v4aP+sU/MHkHsvJks1MIhI4CrkoE/+Gwaz25OrnCenyGb4CIPi7J+aP0u/8ExLB4OrzDgHG3ie+B/7qNvMP9v+y+DDuIc/t6q817ZsQ+2cT5a4E+aBYKhD9J8wH4fbS2AU=",
+        "scale": 0.0033073537051677704,
+        "bias": -5.008979797363281
+      },
+      "40": {
+        "filter": "+xIVC98P6fX55/UB9/wX3+j4/9b76Rrc8Pod5gEf/Cv59Cj7/+IWE+wPzgbx8AUB9tn+4f0t3NPtAPzO6+v79L4RAPYDGdQG+Oje9+fygQoI5QgR+vf0DgfyAuAUp93U6NvUCucaF/v07dEJ8Pf//RkF+OwI1e7l5v/7LAUL2N8=",
+        "scale": 0.005656164605170488,
+        "bias": -1.7133455276489258
+      },
+      "20": {
+        "filter": "/PLc7+gT2ef/8u31JQHk7dXU6Jjn5NspBMjk5v/61bvr//z+AuD6JAkL9+3x5+bZ8uoMEAvr/gr+4fL8DuwjA+/3AO8bEerv+voJ3vv9/CQk4Qj97u4Q4wb2/ePd9gH/+Ozj99UV9QRGHvjn+w7rDQ0O5xQc+PsrAev2zP4NgRQ=",
+        "scale": 0.007172779645770788,
+        "bias": -3.685256004333496
+      }
+    }
+  },
+  "mop": {
+    "method": "Text prompts blended with a visual prompt from a labeled LVIS example",
+    "reference_photos": [
+      "https://images.cocodataset.org/val2017/000000032817.jpg"
+    ],
+    "head": {
+      "80": {
+        "filter": "Ies7//vI7RMJvtP8DsPkw0IZ4tPa1t0E5vsV2wjE5vvt/dG//e/uJA7s5Qcx/tvx2tjpfwsLs9nL8e0PD+3609sG2qrs7Rrpxdwf4tPXzxDqGA3U/BLFBegA2gK78gDfxAXOMPod9NEtB6DhBSL5CSIRxSXj6gfO6Qjk4OfP+vE=",
+        "scale": 0.004119269549846649,
+        "bias": -4.65126895904541
+      },
+      "40": {
+        "filter": "GQUK+v/z8/Lj5AjqzwLy6dTvGRbo4/P+DbROzOjm4BIpxiDkCP/c5t/z7Q0L3RLjGwjpCfb7B/Lr+OsI9r7pA+UYE/Dz1/7mFPvNEMzugfT74/jhzebG8/7d99P13t/U7u0aAt/u7e4H5gfz9Ofq7P7Z+RIBAhbjSODfcQEPBes=",
+        "scale": 0.005026362836360931,
+        "bias": -3.764594078063965
+      },
+      "20": {
+        "filter": "9vDS8Nz/3bwX6xst+EEittNV5Or9y+kjFwj8xuQ55/P+Cvv95urm7dHv3hr1xtDr6w7n4f/iRxnastfiRgJgwODyDNEm8tXy0fYayvkO9S4jzRTttv6+68PALf/Z9CUb/SQC97UMygAa1sjzGcb41QYX/f3dIukj058V8eLggfU=",
+        "scale": 0.004535899497568607,
+        "bias": -5.077052116394043
+      }
+    }
+  },
+  "oven": {
+    "method": "Text prompts blended with a visual prompt from a labeled LVIS example",
+    "reference_photos": [
+      "https://images.cocodataset.org/train2017/000000036278.jpg"
+    ],
+    "head": {
+      "80": {
+        "filter": "FNw+1/4xAvLlGtHyGI3lMxj02fP06OcIzM0M5d397hb45M8HJaUC+NwXu7sjHN4T4PEtD/Cp59gS6+bt8c7gAafyJvKs6hOpDNgPAduBA7cH89zvzDHUJSXm+eAIzRgD8vhFD/8C/agd9qQMzncSDcweDMbdw/DERZ4MD+zp2/E=",
+        "scale": 0.0035906252451241016,
+        "bias": -4.983567237854004
+      },
+      "40": {
+        "filter": "PwkMCiPV5OfxAgkECvHn1usLDAsL+A7wAgI7++z38RPP5+/6COwR++7w6fb58gvT4AYRCeUg+93d5iTd89MI2LMF6v0UFd3/+8C8AhYZgQ7w7fHyA+oaEu/q5w4E6ezQ6wHt+cz34+jZ6PwCFbcE/Q8Z8+wJ1eLr4vgaPO0Gvws=",
+        "scale": 0.0050713368691504,
+        "bias": -3.5087976455688477
+      },
+      "20": {
+        "filter": "IPPqAfwS9w70+vLlDPH6/qkH5oH8DeH+DNsBEf7T4egLAgEA1d3e7/oVCgnv9N7C7+v4Du/x2/L45ecRGM8cOL8C8v8s9fcYC/0I9/UR5kI17g8B4uXY6/oE7/PdG/vX6gq3Bg4v7+jxAQUU3B3+zvIJ6BrpDvND9fv15RkEhwQ=",
+        "scale": 0.005941785406321287,
+        "bias": -6.229552268981934
+      }
+    }
+  },
+  "pacifier": {
+    "method": "Text prompts blended with a visual prompt from a labeled LVIS example",
+    "reference_photos": [
+      "https://images.cocodataset.org/train2017/000000317365.jpg"
+    ],
+    "head": {
+      "80": {
+        "filter": "Ju7oHJv1BevO3L7fL6kr+wlM4t669AnDliIwHM/BMvwUzRb2uZaBbfm2ELl82rP/OsO9BvW2z+nL1OMHCMrQ4vSt5PYI6wgM2eLyucDIGt3EAff47/j4OeGr3Ou66Q/DDy71D/gFrATnx/a+AkIVEuLe6Fbl6PUhcPID9RALFLs=",
+        "scale": 0.003462576773017645,
+        "bias": -5.605003356933594
+      },
+      "40": {
+        "filter": "6Rn6/93RGC7I9N6d2tnDvOAN5tCcwj/i8+1z2KAK3PHR/gnSwMnO1/7c4OcCndXVZQcFGTjf1/Hv4ukmJ8UA1dwd6g8PAxLb//rZ6h3yigfi7eAN9u/y0EkBD7Ya6sMMyPko+OzsE/bbGQv51a8KyLESG4EZ2prs5qDlcjo4/PI=",
+        "scale": 0.0036453919019550085,
+        "bias": -3.953179359436035
+      },
+      "20": {
+        "filter": "6QXL5RII2gfyDxvcKs797wco6IHwv83t+er1zMUZ0vvs8/3/5PkCIgIm8fsG//T+wr3a/d3Q+wDK6Pqp7+xWzAwfveRKBPHXyu30HP8e1PQJ7Bb92LLUEPIkFdYH9OX82+ff/vvb4u10Ad3YALP97BYC6+b+F/Mt0RXTJskxofU=",
+        "scale": 0.004891731310635805,
+        "bias": -4.9547648429870605
+      }
+    }
+  },
+  "pepper grinder": {
+    "method": "Text prompts blended with a visual prompt from a labeled LVIS example",
+    "reference_photos": [
+      "https://images.cocodataset.org/train2017/000000044763.jpg"
+    ],
+    "head": {
+      "80": {
+        "filter": "KgoCJNPsJ7/Q2artDI4H7SIK+eLr7ckT8KPsKgm/Jfng8bzN7/fBBPL8yRl3EM71+AzY4QgDwezo2OD0Ere/0vbJCxDA+P6/7tRKCfb4WaXTFr7B3jHX7UXh9O/R3faF8uvjteny3M3076bREhbzBN8m7RvqAgj4COG41d6B3KU=",
+        "scale": 0.00342446006834507,
+        "bias": -0.5323896408081055
+      },
+      "40": {
+        "filter": "DvP98dT7Avng6wfZ2wMUvef0+gfs8+T56Qkw6CHrGS+2F/ru7cr62t8D29w61dfg5Lr6r/0M7vnrGBwI+KoD6anvyPQa5bXl0tndETb7htXq87fuLdzy1fkD+wwlCdPZu/UEAcjkzfI2+BLCysrXtewP/PPmAuMBJP3zfxHg4Mg=",
+        "scale": 0.004190586507320404,
+        "bias": -1.8644905090332031
+      },
+      "20": {
+        "filter": "+QH6JwHj9/oNBA7qNP0H19wG/oHz5+316+8V5O8T6AP6+vT89dceD/oj4hvl0vLg3w725Nnj6erw9gQMFgI6/bwc4A7n89IFy87lJhEAAiLr6xXuxvT9/fUL8vsB6RHuzvrUwvIV/A008fvi4hjn2hz24QntGNwo7O0BFbDX0BQ=",
+        "scale": 0.006163869984447956,
+        "bias": -6.387918949127197
+      }
+    }
+  },
+  "pet collar": {
+    "method": "Text prompts blended with a visual prompt from a labeled LVIS example",
+    "reference_photos": [
+      "https://images.cocodataset.org/val2017/000000549220.jpg"
+    ],
+    "head": {
+      "80": {
+        "filter": "1tLoE+7OGeHg2QHDEYEk61kP3wQJ2ND7v9gQ1/34+P4dA5HpsOjuILrR/6xnnNvI7Pvz7LOEyhnd4ejxGOzV0M/JEgDU8/Xi/f0F68fv8+7kDdDz/BcBABXzD/ilF+nb/uUl9dcp+BD+JM32EA3+++Hu9V7yzcX/MczG+9ke5hM=",
+        "scale": 0.0038731403183192015,
+        "bias": -5.044864654541016
+      },
+      "40": {
+        "filter": "9hIq+xD6/ynj/d4O8QT/zuD69PDY9+/dDxk8CtD43/Or4u3b1/HtDwYH3PAHswHj8LUG9fkO8fINBQ4F09PT+57v6hwA5fXmEvHxCun/gdzj+wz8FwUQ8wsDBOoV4+P7v/YDINjh3eLs8BTk+vfd3+gRGefx7/ETD+HvTvL+/PQ=",
+        "scale": 0.00536205992102623,
+        "bias": -1.5382461547851562
+      },
+      "20": {
+        "filter": "3PzU57fPEufhFgHpN/j+2eUE+IEC5t8eHO7h+9325cCuGP4H+sD27usa9ujS58H//SMK+M/z+ugDBRzMGuNCFs4v1+pG+eIn9vXr0Av8DBrZ/vYI8eHbzfEI//kg8vLX4QPV8QUHENlL3uvp9/gGBBXiJPni+xUM6Qj3LtoBqPs=",
+        "scale": 0.0049812146462500095,
+        "bias": -7.791011333465576
+      }
+    }
+  },
+  "pliers": {
+    "method": "Text prompts blended with a visual prompt from a labeled LVIS example",
+    "reference_photos": [
+      "https://images.cocodataset.org/train2017/000000217760.jpg"
+    ],
+    "head": {
+      "80": {
+        "filter": "qenPM8zuHwUE38HZ5YUr+UX83eaoG4ECAcUKEwrt2zE2Ceqx1x7hIu4N271Mu+Tq5MKuRKakv/HR+rbLSaHlCva07uXt7v3ApdcbJbrX9AquRsIUrTm4Kva89PCIB+fuuSgPHhRADtO/HvTsEiby8P762C3rA+r3X6GlDu/PKEA=",
+        "scale": 0.002847218420356512,
+        "bias": -7.056888580322266
+      },
+      "40": {
+        "filter": "ARoW8BgR8vvN+eYC/OvS5cz05ekB9Bjz/wEb8OnzAQjp6BL4Gvaw+/sPuvYK3PDj/NkAAQMGD9T15OsT/M7k8eAM5fvr1ujcC/H509sRgeDO9QP23xMS6hD18vIC9PPw0v4BAtcSCuPZBhvO2un9zuYBB9od7/bzBAIQbCAV3M4=",
+        "scale": 0.005449009593576193,
+        "bias": -1.8435258865356445
+      },
+      "20": {
+        "filter": "xOgfFgb018PfBfXDJMwA4rYf3qoSEhI3JNkE098R2fHMG/ng4vj6vu36NRfwF9n92P0c783uBfTqBAL+NtxD3ev/w/wyAdoC7vf3+Q4s4DcCB+sN0dvozQMd4ukrvfbatQruCwIh6MU568PvxbkO+wDq6fm+6Q0B8h7nFsoOgeo=",
+        "scale": 0.004548377823084593,
+        "bias": -5.626490592956543
+      }
+    }
+  },
+  "printer": {
+    "method": "Text prompts blended with a visual prompt from a labeled LVIS example",
+    "reference_photos": [
+      "https://images.cocodataset.org/train2017/000000384823.jpg"
+    ],
+    "head": {
+      "80": {
+        "filter": "8gFo69f90QYIILEU24Ha9AQa9/DX5eD74qvxDuL67RrC9/oDAtLtMcjzrc5WxEfOzfXs9ui9re1h4fepJs7aGcUKMvDS5d/ZCPvv5OSOBq8C9eLn8AD6+O7I7/35C+fmIQX9NAL7+6QB89oA20786wr1/fruzOHEGd8HJucBpBM=",
+        "scale": 0.004036305472254753,
+        "bias": -3.146265983581543
+      },
+      "40": {
+        "filter": "CwcV7yPPAhvXwSr6D+DSsNbiEQry2gzv8sk41N7jyTXSx9AEHO6u2OLz9NHYvMbs1MMwDNitHeDcpujf1AsK9pTqCvIJFb3b2aCo4iEigTG1C/jUAgUJC/HG/OsL9PDFxiDlAwf8HNLxt+Th3a0LDeI7+sA/5dH51+QIYvk21ds=",
+        "scale": 0.0037098508328199387,
+        "bias": -1.1417598724365234
+      },
+      "20": {
+        "filter": "9+YYCfXv+fsH8PLO8ccE9MHz+IH9AOoZDAPgA+4E9PQI/e8uz+fv2h0N/9j7COvg2AT+B/Pa8v3eCugOJtUj/gYV+RQ08+785d/4Evkfz0cb5fj28urbFe0gChrV7QHa7RLnAQf4887sBgIc4tACCu737xQJKeP18drd3N0Iw9o=",
+        "scale": 0.006575243081897497,
+        "bias": -5.508334159851074
+      }
+    }
+  },
+  "reusable shopping bag": {
+    "method": "Text prompts blended with a visual prompt from a labeled LVIS example",
+    "reference_photos": [
+      "https://images.cocodataset.org/train2017/000000130839.jpg"
+    ],
+    "head": {
+      "80": {
+        "filter": "G9BKCh250vkZCebo/KfJ5Vwe8PHh0/H30Ps6+ent+w2q4onP69YXFPH2K+JIgevGCOfm8avOHwEY5uoIFxnRvfgJL+zTAOTa7g/yEMIQ9N8L9//L4+/jIP3uBQba+Bf+xR4h+uvwGgXk++DlIOkFzELhDwbK+L/MFPr4AwDk7zE=",
+        "scale": 0.004637989681214094,
+        "bias": -5.5073699951171875
+      },
+      "40": {
+        "filter": "LQsk7grU+e/S6eMR/vYR0evf9NLiGPLuNAox0wX6DSnVztOzzx/h5/cT/yC9vwTv/Lz8DAP86Qj86OkLvPYR7LDtCPYL7/rUCB7pEbf1gRzm4Nn08ejL9fnO99ANCfQPv/EmC/Hj+OXKAPu91Q7qCPYD+voKEOwhJgrKQuP/6r8=",
+        "scale": 0.0049938359297811985,
+        "bias": -2.5424699783325195
+      },
+      "20": {
+        "filter": "vwIVFLcoEe/t+AMR8NzX5AEV9IELBNvcDwHx+fTG88rt/gcV0Nno8OAeHMsJFq/dCSgE7skW5QbqDQnlMCdS2AAqBsU7Fsrr2br23gLe+kO/BeLs4v3S+/vZHefg4Afp8/QLAcnd88ozD7//AAH/8/PzHvsFGdkd+OcE7dfwqeg=",
+        "scale": 0.005367385223507881,
+        "bias": -5.7070441246032715
+      }
+    }
+  },
+  "rolling pin": {
+    "method": "Text prompts blended with a visual prompt from a labeled LVIS example",
+    "reference_photos": [
+      "https://images.cocodataset.org/train2017/000000233539.jpg"
+    ],
+    "head": {
+      "80": {
+        "filter": "v+zs3w3r6BDr7PDX0pgIw+cB6OX5B5oAGODVAuXcxhfYCwTU8if8+ffy4Ad/CPX87P2mCNPw5RfO/86pBtb53rsO5Na4Ddqx2chNCO3+Guz1KxAr4A4G4fwu2A2v5tzO4A0OHP9EAd7Q8ObPAFQS/jHt4knWwuLrGtnO/NmuA8s=",
+        "scale": 0.0037213496398180723,
+        "bias": -2.783747673034668
+      },
+      "40": {
+        "filter": "AuT43xHn9eXjwNj+5R0IwuqsCr0G6Qzw5+lW1QrO6xHn8hrVK9KO3u8XEtMz3gTX384V+ygM68q81vQC66by/Ybp/gfo3Pf66sXNxMQAgefT0gT1vkXt2/Lg4fr44uXn5xDnJ8XQ1Oz25h/m1cbV4A0iHArx3TftHRfwTFYB1MQ=",
+        "scale": 0.003895723493769765,
+        "bias": -0.40771007537841797
+      },
+      "20": {
+        "filter": "z/ccGxLa8c4DBAT4Iuj97KcVBoEC9xYPJvv1+83r6QXwAOIN2OQN8OgKGvzN6OXO3DAN6AT37+cX6+7kIQwp6PcQ1wI13Pnr0w0J+wc0EiwgESfz1PYB+PDm2+3r3BDYDwvs/O3+Bd0s5dDqBdPx1PXt6xDW8fv55fH5D9f3uhY=",
+        "scale": 0.006059057079255581,
+        "bias": -5.004580020904541
+      }
+    }
+  },
+  "salt shaker": {
+    "method": "Text prompts blended with a visual prompt from a labeled LVIS example",
+    "reference_photos": [
+      "https://images.cocodataset.org/train2017/000000341271.jpg"
+    ],
+    "head": {
+      "80": {
+        "filter": "BhEH/9b77d/tEMXqCaQYAkwbCuEaBfgFCMrnCuzVBw7P9r3i3TPSAwQD4uN/C8PpBe7k4gHis+z21t377crB/wrz+R7iE/7H7v8hC/0SNcr4DMfS4Arg6y/l/vrs1fCx3ub54+Dw4N4F987yIQgH/uwT/Q7w5gX+9/b49tTF7sc=",
+        "scale": 0.004750845022499561,
+        "bias": -2.622549057006836
+      },
+      "40": {
+        "filter": "Pgv178kMFvzZ7+bt0u310f4R6P/z3vPs6RYWDCrwKELcJe/i4t3Y5uD8+NoFvuXpysnrwPkL6Af+DQYV9aoJ2qbgx/wP8eHmzurUKhP0gdHw7dvvDdQC4vX6CSUsIuDx1AAP9cPG6wMW9RnI6Nf91evw/wT0+N/uHer6dwwD8NE=",
+        "scale": 0.0046785743907094,
+        "bias": -2.289666175842285
+      },
+      "20": {
+        "filter": "7un/TdviAwQQ4wjw/er9y+EO/IHZ+uz58gjtz93y/QX95u8Z4OwlDwIc8iDk5f3Z7hDq78fm3efu+QXYBg1D+rEW1hnzCfsAxsUCLA/zFzL0EhbqzNn0/O395f/xDBQC5Qvk7dwT+wQV1ebz0x3p1zLa3BkACfM04QT6JtHbvRw=",
+        "scale": 0.0057174512185156345,
+        "bias": -7.629024505615234
+      }
+    }
+  },
+  "scissors": {
+    "method": "Text prompts blended with a visual prompt from a labeled LVIS example",
+    "reference_photos": [
+      "https://images.cocodataset.org/val2017/000000154213.jpg"
+    ],
+    "head": {
+      "80": {
+        "filter": "w9m7KQEUGQTr9NvQ8IH0v1/u+Qf8+4Pp/vILEwayxC8B6RDsFeHE8Af+3CFdrwkG2dreRvft5QWgAsq3Dsj+0d7G9v289fu8vbs0BMvbDxi8GOjouxrnO/Dy4B/MDe8N0vwpN+80yebVHPubI2MXCN0D7in+F9cEGMO59M7Z+Oo=",
+        "scale": 0.0031080159824341536,
+        "bias": -6.592589378356934
+      },
+      "40": {
+        "filter": "9xUQES7t9wXd3vwEBPDp2+Tw99zd/QP86Qky7Pb58fri8h/1CubNAf4R1iIk/P3rE/76ABw7+eLq6vUJ8a/l88H71gLu3fLNBe365ckIgfTn5gDv0AHb/Pr07fwC+9rt5BwGBdEH7f7x/wjr2ewAz+H5Adv7A9zuCfICRQ4Yyu4=",
+        "scale": 0.005380131769925356,
+        "bias": -1.269845962524414
+      },
+      "20": {
+        "filter": "6wD/4gDh4dUM//38BtXm4r0N9pohAO83D+IX2uTw+QPo+vcNBe3w9OcWDRL4+f4A8QEOD9Hz5Pb4+Ar4H+Um2P7g9fJAzN3r4hfnAQ4nBRsT+AcCwtvayQIbB+cM4PHg2RcJD+wl2OxcFNXw/eXW3/v85v7T1Ag75/f/7/T0gQ4=",
+        "scale": 0.005381655413657427,
+        "bias": -4.502289295196533
+      }
+    }
+  },
+  "screwdriver": {
+    "method": "Text prompts blended with a visual prompt from a labeled LVIS example",
+    "reference_photos": [
+      "https://images.cocodataset.org/train2017/000000195288.jpg"
+    ],
+    "head": {
+      "80": {
+        "filter": "yhv4I9Hh6gQ02Mj6+YHn5C0G3eLwF5PuNbtB7hfMCAPS7PzUAvG50gz+5AdIvhmx1uvbTvT/ofSWDeOZNbDIEMvb38/H6w3ur8hz36nOFq3bLubu3CqbHvPSAzat/N+dBPgj++kRvcPqEby/9iIVJwvj1FojC/r3I5643MDvx9g=",
+        "scale": 0.0034759759437292814,
+        "bias": -2.1056289672851562
+      },
+      "40": {
+        "filter": "FPgJByAJ+ALo6A7/A/rk18/aB+vyCPwM7fIf5/vS2vzdCRnv/OfQCQbw6Rcs5+juBen4GPn9EeDv0eQHya/dB9j/9vf59N3qEeTC++kDoc3R2gX04AXd5e79AQkI++Dc3AAEHMz4/wMQ0S7Z19rw2On5Curh/+3pC+gJfx4Bz8U=",
+        "scale": 0.00546223483979702,
+        "bias": -1.4556379318237305
+      },
+      "20": {
+        "filter": "CiH2J+Hf/LEeG/aODd8qrIEXqoHl569HNAb76bEU7yTP/9Q/7dLfxuwRLBEg0fP2vAMpBqrV/sfN6xndVNZ6xK7V5vA81frSzwz3/fhi8FHb2iUAjgDe7+D0NecIsxDLzx/B99Po4OL8DvDg1K/u8wr05zrX3w7lJb0JGtn3geo=",
+        "scale": 0.003362291259691119,
+        "bias": -6.753207206726074
+      }
+    }
+  },
+  "showerhead": {
+    "method": "Text prompts blended with a visual prompt from a labeled LVIS example",
+    "reference_photos": [
+      "https://images.cocodataset.org/val2017/000000006818.jpg"
+    ],
+    "head": {
+      "80": {
+        "filter": "w9ofP7meGLwDzfXpBKQZxE7p18LoIMgj1sbJNAjuBjK9TOKcERndAufakfo+vdWu/dkQJrWC59a39/Tnf/D2HsnW7tDw8g+9uf5N++4EAOfDS/q5mh/Y4/Gy6AOyI/qNuBXi5fUyE7YQGOgBwhAyGdP57xMRNCclWM7a5fezH+Y=",
+        "scale": 0.0033501663710922003,
+        "bias": -5.875720024108887
+      },
+      "40": {
+        "filter": "9wQI6h8ZAuLZ8gUZ5AD41tYP4NvZyfn99g4J4wHn4hXSCiAI/vOg9/YUyfoH1/zyFsL60QMFDMy8/Q367KwNAtMk59cR49De2Nr++Mj0ntfx4vXw1hYX4THzxdkku8/mCs21ANoMOPT/xC8GxPnt0gT2JPEtGMfQAe7OfzL5yvk=",
+        "scale": 0.004449193831533194,
+        "bias": -3.204883575439453
+      },
+      "20": {
+        "filter": "5NrBWv37v7Yu5ejRMA/r98LCq5MB0/Fg36bygd0Q4L6y7/4N489hHt8y+wIAwPTPmenm7rW69wUFBhk6Judr3+400OkiIfzozyBB2dr88w3uCkPil6ry3SUtxuL6oci2wBXg9cH8ybVM9sTODtM20yZI5Qvi6Tc4Cz/Tu6kJwQQ=",
+        "scale": 0.003627806669101119,
+        "bias": -6.822505474090576
+      }
+    }
+  },
+  "sink": {
+    "method": "Text prompts blended with a visual prompt from a labeled LVIS example",
+    "reference_photos": [
+      "https://images.cocodataset.org/val2017/000000136033.jpg"
+    ],
+    "head": {
+      "80": {
+        "filter": "xdgXE/z8sjcODNbgAoH7Dkj/8v7myvgg4Mf/D9gJpicQAtvcIQUXNOv85P136sTu9Pz2DbEHzNLr3vX8/xYC8Nnc977w6AvI9+rOC+Lk0wTv7xMR1vPZAvH62fTSHeIM8OgaFvY2y9DYAdPj7DAL+t/2DfPmHg7w9A8KBwaQ9wk=",
+        "scale": 0.004291382152587175,
+        "bias": -7.02481746673584
+      },
+      "40": {
+        "filter": "BhsY9M73Avvu0xAD6Qi80sb0+RYL6R70/NEw5esDzTft3yLT6x+67twFCA3q5xMcHPIFwgkJ1tHZAAkE4Oj6yL4MA/zryAYEKuys7+3mgfPgA+7fsgn15/Pb3eEY9dnWEx3/+vnm77zH5d28F/4bIwMUAPT4++b3CQ32O/MUAfQ=",
+        "scale": 0.00497376499697566,
+        "bias": -2.9028444290161133
+      },
+      "20": {
+        "filter": "3+7/EBIAqPoHxNzn//bg+M0py4QR/hHP+O0I0ewQ5t3f9P4dCNr1FAwODxHh/wTk4PXe6yTg8hAQ+uv+MvE+7vkFKO4qBND7zbbg5fvhKic128X4+9/oyPcX9eL7IAjp/yoc+dYz68QI2cn9H8sFzhv77vrg8O4t+AnF1fr9gQE=",
+        "scale": 0.005103371571749449,
+        "bias": -5.060541152954102
+      }
+    }
+  },
+  "spatula": {
+    "method": "Text prompts blended with a visual prompt from a labeled LVIS example",
+    "reference_photos": [
+      "https://images.cocodataset.org/train2017/000000578308.jpg"
+    ],
+    "head": {
+      "80": {
+        "filter": "6CrYzBuMECbQ28TmE5/X5EPavAIg46v0+Mr4HfuS7hjt8dLbIEyu40Ac5O4h3QSv6v7aVPTl2d6eDM/X67H2/L3su9nG8PW7urh00oH9AOnL+P8anEKt9grV++uhlxAHl/r+Kv9FI7fPFK31XWoc/e0zFgrT/f758tnf87uszA4=",
+        "scale": 0.0028385936748236418,
+        "bias": -4.707104682922363
+      },
+      "40": {
+        "filter": "NhMTHQYC5cLr5gHy/vMf4fUBBvvcA/Ty9vxB3A7/2v0I4xPQLgzd/wgU3wsf0QLm/gUbBwEUEL/pAPb6D9La89Pv5/7kzPPdFO/qAPP7gd//4u35ywHD5Nrp+ffs997W9gf56sTx3vHx4xH21PL6wPXg3+Lx4PviKAj9WgkP4sc=",
+        "scale": 0.0050683594308793545,
+        "bias": -1.7654914855957031
+      },
+      "20": {
+        "filter": "5REB4/Lu4930D/vqHNcC4rY05Lz6DN0mEu0QxNr2+R4E9gkHuwT18uX7GTzs/PrN+yMB6Nby8eb71+fqH+ZA8erU+OYx4+DsG/38APf9GDgN3Sb11P7Y4wbuKKv34fDt5RIGAOII3Awg/MHp/vvstPH77hvt+vcR0gD7zOsNgQg=",
+        "scale": 0.005689177196472883,
+        "bias": -4.635498523712158
+      }
+    }
+  },
+  "stool": {
+    "method": "Text prompts blended with a visual prompt from a labeled LVIS example",
+    "reference_photos": [
+      "https://images.cocodataset.org/train2017/000000055578.jpg"
+    ],
+    "head": {
+      "80": {
+        "filter": "IeUWp/cL+AMFCPS6FJcz7j0OA+jSA+D8HusECA/n4QTp+PPiAQII+OkPsMl/8PLO+fTv6y4YCA8qDtoP+CHs+/3l+frc2tfdz9rv2AucEvz40QP0CAvKEObsxNHL8PDl6vok6ekLBPIXGvT0BBcFAPQR8sb44RDVAvEM86js4Cc=",
+        "scale": 0.004760247655212879,
+        "bias": -6.951695919036865
+      },
+      "40": {
+        "filter": "P+0J5B7gBRb36+sVBfwBygTeyezPqwL+9AYF+QwDBT79/OLqKfjB6uj/7bAU9RLj5frl7fkK9woB8/cD/dwT5Kjtwied97by/vLHExP7gfb97OrtAgX1Dy7M5xEZ1/n8BePj0O/vy+8vGe4Q+vUeDeQc9u/5qLwT7wEJOP7+4d8=",
+        "scale": 0.00480269268155098,
+        "bias": -3.439511299133301
+      },
+      "20": {
+        "filter": "Bd4QNOXu7C3w+d4UFbHs9OP7+IH6Hq/77Obq5tn1/h7Stfgl4/738/AA3vLr/ecUHfYXAesM1QMD5rr7ONA7FtwHHB7++OgLxt3sFgX89hMo7yUC4+sRC9vpHPwb7f3u//cLA94P98wbogwC4BUD5e361RHk7+gV4wwBEwH7sfk=",
+        "scale": 0.005392417777329683,
+        "bias": -7.837740421295166
+      }
+    }
+  },
+  "stove": {
+    "method": "Text prompts blended with a visual prompt from a labeled LVIS example",
+    "reference_photos": [
+      "https://images.cocodataset.org/train2017/000000550746.jpg"
+    ],
+    "head": {
+      "80": {
+        "filter": "JR5F6wXx5w7yDr0I+rHzCRoty/zgzQgE4tftFdve0xDd9u3/F+vjFyMIt/E+IdsF7xv9MeC6zeIj5P7f5+T1D4YbA/bo6AfH6s3r5cWB5uPM6t7XrTPOHezI69gQ7SInBx3yJewT89PVDK8L9UDx+womB8UV9OzTC8K+F+Ts7OE=",
+        "scale": 0.00401289714500308,
+        "bias": -6.497469902038574
+      },
+      "40": {
+        "filter": "Ifn4/t0cCuPk5wXeCObH9dcSGycM5vYD+dI07AXq6SXw2hrrCvUO2f4D8u30Avr77f4LDdz18c/X7RH2DN/47t7u6d3n9gX9/8PQ0gUmgTbl3O/1CNL/+urn4uTsEsH18Q8l5eXt9tz4/tbhB7sb3wT1COUk1+rbBxUAbdgt6Bo=",
+        "scale": 0.005204659886658192,
+        "bias": -4.338905334472656
+      },
+      "20": {
+        "filter": "EP8a7gwN5wAB4BTwCe/z8bMB26/y7PIIDAkJ8P0O9/UPC/XfufkT9Qn4DBH+Fd7h6fQEAiLjAALT+88UEcszDO/oA+kO39zs/uoDEPn52T0s2+QG4PDnA+3+E/ja9RP94xnd+Osy4+765uf65Pr81wXq3BP0EPUd6Pbp6f32gfc=",
+        "scale": 0.0071486528031528,
+        "bias": -4.3277082443237305
+      }
+    }
+  },
+  "strainer": {
+    "method": "Text prompts blended with a visual prompt from a labeled LVIS example",
+    "reference_photos": [
+      "https://images.cocodataset.org/train2017/000000096693.jpg"
+    ],
+    "head": {
+      "80": {
+        "filter": "2O8W8wy51g4a1N35FYHP9WPjBOTY6c/s6LC/P9nCxSPF/wHaI/0cD+UE089Y0svb9PnRzu/IGvkZC+3zBMvk6+/EIPW+8L3YvQwD9gcJ6w7S7cX83Af/DwXa+vjd/ADczAU+NQzlMMXe8/ox+zcM4LURAOXzBgLWB70MAPqC6Ak=",
+        "scale": 0.003642091527581215,
+        "bias": -3.21063232421875
+      },
+      "40": {
+        "filter": "6xb/3O0DE+/16AAODw0Ow/z2A+75+BPy9v8n+fn10hzVAQ3cEAnUGvAL0/jHuQr5/v/43xAI+eLWDfYJ3gX07Lf9//v99fXqAOzsCAL9ge7d+Nfr6f0Q1cHX2gcl6OT08Anlvf8C3+Xk+gTW+PH8FRX6/Pce4t72HRL/S/4Ou8Y=",
+        "scale": 0.005405404604971409,
+        "bias": -2.0954837799072266
+      },
+      "20": {
+        "filter": "2u0JGBj03NwE/drkIdnlCd8H74H4+gjw5PrtuPD5/ert8gH/2Nca3/IhE+Py+QrrAvwW6vcACAAOBQ8YHf80FvcD6/ApCOnl598G9//a7Fre/B71+Pn+3OwCCtkB7+zU4BUCDvYVA8UNBOrxG+wK4RsQ6AQG/PYb8wjl99gHoA0=",
+        "scale": 0.007043836638331413,
+        "bias": -6.959999084472656
+      }
+    }
+  },
+  "stroller": {
+    "method": "Text prompts blended with a visual prompt from a labeled LVIS example",
+    "reference_photos": [
+      "https://images.cocodataset.org/train2017/000000473002.jpg"
+    ],
+    "head": {
+      "80": {
+        "filter": "JbZFue8QNZ7Ry7PD+agV4yYr4/fNwAzfuygaEL+pxfb44uMt9o3vXPHV+QR/+uYm0Anp/wWk5dgp203zHy0J0u2qF2XHA8XQp8ax86m52Kve5eKsIRAPQNOo3gY19RvUwyD0Fs4V+bLsmLm6P+kH2xkYC8GzzYvG89sOBQ4I4c0=",
+        "scale": 0.003161253174766898,
+        "bias": -3.4938535690307617
+      },
+      "40": {
+        "filter": "+Cf+8bPm9B2b6wPbItTvu/r7/CGIvQbA+NI1/80PNEKN39v4yuki5ggB/PDFyNPcCNPLBwkSwfkH098FAPEtH4HV1dDfzjPvIeTqD/fKiFEG17nrC6sA9iv0Z63+7/Xv0wXbs+z36zD1JcDR7REC2dnz6t4Qz6cOG73iW/wrwb4=",
+        "scale": 0.00369595130905509,
+        "bias": -2.788827896118164
+      },
+      "20": {
+        "filter": "Ffj+6Nf87hj2EQn59d7d2vT4/IEI7uvx7wbg7O/zBwn07OwS8OoCHgX5ANYd8+Pd/Ln/7fEIBh3gBOT0/P08Cu/98QYWF9sA0dP7CPQC3icf6w7s/uLOAvPcJdUD2/kG3esW6+r47vtA/+vu/A4A+Qf99/AMFfcg4+7+C+cSueY=",
+        "scale": 0.007704189047217369,
+        "bias": -6.428852081298828
+      }
+    }
+  },
+  "tap": {
+    "method": "Text prompts blended with a visual prompt from a labeled LVIS example",
+    "reference_photos": [
+      "https://images.cocodataset.org/train2017/000000511430.jpg"
+    ],
+    "head": {
+      "80": {
+        "filter": "8OIJEwz0Ju4U+tbmDYEDDSoh4/rg99z7wOn0AMS1xC8WQPr598rmSdEGlPhd1L0L5+v5J7ij1NzIuuYVJAb/5rm8BNnh7BSNuqfh9qTj8ebIBwuslRHqEAvk7fPVOgXA42vX6NsbsabAB7jeyiAaBBUH6QTpKxICNc/CFSmGEQw=",
+        "scale": 0.003215599339455366,
+        "bias": -4.043252944946289
+      },
+      "40": {
+        "filter": "Cv0P9vgO6Oru6fjs6P+i2sjmLhH86RTw8t4N5AkGCxjNyybZAeXd1eUA0AgB7Rf9ENwL1xD+5dW49hUD6KIE9cgD9uz3+QDfA+qr69HXgQgH8+Xo1eIH5hT37eU61tvN+AEABOUlBu3f6RS+/OwV4P4SCugjBMXeGAINbSkR8/s=",
+        "scale": 0.004771715961396694,
+        "bias": -2.4306344985961914
+      },
+      "20": {
+        "filter": "+O70Uef6gd0M5AbUDPfa/bn6spotsPYjGez7ruUb1dUN8gXRBL4GEwH8/hH81+QFsOzV7wvSBQ0JCfL9N+ZM1tgVyAY2E/Md3/EdDgkU5hs629Xpu8/qygAE19DqywsUxkHx7M8qyf9L5tIVGe783hwL3PvNFuo97xbq3NUDifo=",
+        "scale": 0.0044241673313081264,
+        "bias": -5.213473796844482
+      }
+    }
+  },
+  "tape measure": {
+    "method": "Text prompts blended with a visual prompt from a labeled LVIS example",
+    "reference_photos": [
+      "https://images.cocodataset.org/train2017/000000244582.jpg"
+    ],
+    "head": {
+      "80": {
+        "filter": "6/zcIz0Lxgz3Gq/b0Kbrwl0J0vAGz8oWGNUH8DntCgLIF+Sz8RHTA+n5s/E6Buw8+bvXDM3o6NDV0BGi/Me557O6Ati728/U1Rgk1/vk2RH1NNj6rAO989E55g3X6rW8D/QONBI8xNrx/sG7KX/uBs7tyD3x2c36Ewvv5cMgB/k=",
+        "scale": 0.003429572330787778,
+        "bias": -4.35499382019043
+      },
+      "40": {
+        "filter": "CfMZ+vcZDw4CsvvquuwR1//cKuAX9tru7vFKAuTZ1QLZ5fH/FeyqJ98P7esDEg/oAdjREy0Z/erb99wO9NvE/Lrv8ALf1e79COft8+QNgdyq0BLSD/rNAe/x594mBNr52xIOD7z4Bw0Q5sjkAtYR7dvJ/AfoDxm6CenRUwkJDdE=",
+        "scale": 0.004531235434114933,
+        "bias": -2.3567047119140625
+      },
+      "20": {
+        "filter": "yfMR+fIAE9bv8P8l/PkQz9ZD4rbVAuowE/b75c4N7gHm9O0o+vTQJv8P1+/bEtATCRXY+QbnyunOzPHuKhgr5vvL2uNS8PrLzBb3ACHxFjfe2BYa1R320PfyCNzi3xTiBAPqztYeEtce89n1+J3q5dXfHAzu1inb9u4b/QPngSA=",
+        "scale": 0.004876693710684776,
+        "bias": -5.7462687492370605
+      }
+    }
+  },
+  "tin can": {
+    "method": "Text prompts blended with a visual prompt from a labeled LVIS example",
+    "reference_photos": [
+      "https://images.cocodataset.org/train2017/000000424842.jpg"
+    ],
+    "head": {
+      "80": {
+        "filter": "/Pn7FPHzF/by+cjuB6QTAEEV/wfz7+wA9OX9HfHHCBnBB8n46Bjx/ez4+94/7srq4eDi2u+B9RIW7LP5BubP3+Xf+wTA69DNBvn3CUvyDPbsDuXFBA7t9Bzt8wvfARvEA/cN9evd7uvv6rD2CDMQ8cES0Q3z4QHbG+n59+nA4Nk=",
+        "scale": 0.004757238551974297,
+        "bias": -2.058725357055664
+      },
+      "40": {
+        "filter": "/BUI4OkEARUF3/sE2gYf1w75C+ECEu3pDwwL9Av9ESLV/fH/9+oJ9tT5/fTu2ev06tbT1QMTAwQB/Avq1e0D67vz5RYH88Lw8PbkAQYRgeMA8u8ECekM2vTs7wck+dfv8fAI7s3q3v8A9P7rCtIK7PX4A+YF+eABCv0EPhjz58M=",
+        "scale": 0.006053608376532793,
+        "bias": -1.3594236373901367
+      },
+      "20": {
+        "filter": "0QcfHgIaGvsH+fDj9en3xO8G7YHn8NPj7NjpyNgC5+3I8/8xFsgOBA86ysb26dfi8RDe2fHF4+PzEAULI+k7Gs4b7gYH+t753sr+FSHkACza/RLy5/IG5QDj3+/sFfLmvO7d7fAwBgAb5fHj/Bnk/wgH6/cIA+9JCwEFNuMLhyQ=",
+        "scale": 0.005361338146030903,
+        "bias": -5.821138381958008
+      }
+    }
+  },
+  "toaster": {
+    "method": "Text prompts blended with a visual prompt from a labeled LVIS example",
+    "reference_photos": [
+      "https://images.cocodataset.org/train2017/000000525075.jpg"
+    ],
+    "head": {
+      "80": {
+        "filter": "1Nn+A9wFBs/57MrT8oHl9i3g/vfa7/AF++LoE+L7Bz3d//vs+xwKC9wi7+lf6AD5v9bpzObm+dsS3/e7IMLv9eToOujE4OO87yEF/ur4Gdv78+fd1hTAAQvp6/EH6wXP4/Ya+/IE/8j56Oni70wG/tMKCs3x7PfcRPImFc/j4SI=",
+        "scale": 0.004328434821218252,
+        "bias": -3.000364303588867
+      },
+      "40": {
+        "filter": "EhgR7wjt79j74fcU/eEFugL7/uASDubpBwwuAwP92zLD7A7xFP/a8PQV9vzRyO/i6+v77f0T6Ovm3vvcz/f/4p7/6wTr9+HjC8fd/O3wgevz8/ftG/cg/N3T5AMh2uHL8fPg+dv0+vLo3Pf77vAL/O4d8uIS7rnT3gH9ThMT0cc=",
+        "scale": 0.00478719174861908,
+        "bias": -0.8235740661621094
+      },
+      "20": {
+        "filter": "8PQL/+H1/fAG8+rf/9vx8uP++oH0Eewc9d7f/vP35+0IAgAZ5uT0EP4WCenl/O7L4vMC7vr37e4HBQ/5E+YpEOYD7O5H/OYA8tgC+g788i7/7RL33t716An89ODt9gDp4Qj0C/EGBtXqEAf28QL+2AoQ5/7y5vY77hrw7PQJqg4=",
+        "scale": 0.007394817657768726,
+        "bias": -3.8687143325805664
+      }
+    }
+  },
+  "tongs": {
+    "method": "Text prompts blended with a visual prompt from a labeled LVIS example",
+    "reference_photos": [
+      "https://images.cocodataset.org/train2017/000000186892.jpg"
+    ],
+    "head": {
+      "80": {
+        "filter": "8u/5IivVPR7hy+3N4pMA1v8D1QH09pXvBu3x/i/c/BIC4/TI/SHZA9MhzN0a19/i377LOu3s6/HGKrvpLsoG4vO+FNa7+AHcwKEY663qDP/ACunogT/CEhbd/P6gtCj8tBUcBg81E9rbIsfqIkvr+Noa/yDeA/EOIdLB/+TAAhs=",
+        "scale": 0.00362404971383512,
+        "bias": -3.445690155029297
+      },
+      "40": {
+        "filter": "FA8XCSr59tnR7PkB6+7b1Nr4+vLw/vME+w8h6vkI8/zf4AzuGfLB+/f5wwgb7gbX6/0bEQcgHsbn9fTq7LXO7ssR0wLo3vbXHd0C5ekCgf/47vbjxijz5PH45/vu8e3v3/MB488e3d3oDgnm2drjqf4N/u3/7/r6LwUTcSQS6ME=",
+        "scale": 0.004944451153278351,
+        "bias": -1.9615144729614258
+      },
+      "20": {
+        "filter": "vCsn9AHtybfeAPnoOrYAx4o8AZ8P8+Y0P9Ymvv8N3AD0AAfhquHW3tLcEyDUH9rj9yEy6MLz+/Ln0hj3StZC9tff3A9A6PAv9wwf8ssa8VIp+R/utPLjyAr8A70fu+jUyP/6HeQUz+g/CufyCff5pu35+AS08P8AvPLyBuzwgew=",
+        "scale": 0.0042113931849598885,
+        "bias": -5.014498710632324
+      }
+    }
+  },
+  "toolbox": {
+    "method": "Text prompts blended with a visual prompt from a labeled LVIS example",
+    "reference_photos": [
+      "https://images.cocodataset.org/train2017/000000350230.jpg"
+    ],
+    "head": {
+      "80": {
+        "filter": "CvU67PX8uTIt+ej15Z31BUfv4vzR6AP1+sk39Pjz8/y43MrL0QYmKOf48dY3w9zKD/Tx4tDn7d1J7/LPHN7R/L8RCuzQxebH9PDhCv2B37gIEwrsBgDcN9r7/f3y7uzj4ggmEAf0BRL2BqbODPrp5U7qFer75s3CBcDwFuDiwSA=",
+        "scale": 0.0043643768876791,
+        "bias": -3.812436103820801
+      },
+      "40": {
+        "filter": "Q/kR5jXU7QDC3tYVDdv72NT1+Pwg6uv6GP0hxf7s7UTbtuHi6wLS7x4VGdqy++/85c/9DgDKFesBvfv1xBQN27kR/vMJ6cTS6em18/ECgTPG5AYCxwPqBe28DfIL/+Hrx/419s7S3wfl4vmhB7fjRvMQ/v4L4vL8E/0DWt/3zdI=",
+        "scale": 0.004489613696932793,
+        "bias": -2.4707231521606445
+      },
+      "20": {
+        "filter": "4Q4i+tQq/gfi1/cF/M/46bsVB4r1Fd3P/PzsD9rkAfX2CfcZyeX1qf0NGcUaEqvS3g4V3gXw/Bfn7uzVLu8+6dQc8fVN+cYD8skW/QP02H8cCe0E+OLgCvTJ+QLw/hfNBxXp7uzpDt3x7OcB3MoZFhHj/xEK2NL4A77sBPf5wds=",
+        "scale": 0.005540766287595034,
+        "bias": -6.343271255493164
+      }
+    }
+  },
+  "vacuum cleaner": {
+    "method": "Text prompts blended with a visual prompt from a labeled LVIS example",
+    "reference_photos": [
+      "https://images.cocodataset.org/val2017/000000425226.jpg"
+    ],
+    "head": {
+      "80": {
+        "filter": "GpoTCh/HE8kHoaexGYWhkVo738faHZnzyMEmjBfQAiDa9MnSHaCjQ/3LvdBXifqvuNnpSgzNrKGBzPwDaCvd4L6RJbui+v7VxrYsCJTpCpUQQvasix7WCCDmzNG5EiW800kFCcJGI6fgL4zcoyoACQwiFkmW6s4GA7HC8NGEWPE=",
+        "scale": 0.0023735545109957457,
+        "bias": -4.046241760253906
+      },
+      "40": {
+        "filter": "OQAb+z/G/APQ+izk9RYi1LP5MCyx+xPfFOM/t+TeEumNwvTb++3eCPH1ujIrugrO3+YI5RMOANTP6foSwo7iCadO4+sN1hPB8uDNHcwKhQgPyq3cuufO+gTi5tYJzczY9uoPH/b+/PXvzhrm7+LNougIBisK9xDGO9Pbfw4C2Pg=",
+        "scale": 0.0036063571460545063,
+        "bias": -4.224947929382324
+      },
+      "20": {
+        "filter": "FAK1Cp3068MZGBT7BuP6xYZY5ocCyeo3NO3jsgIW4A8VCAT3rNCz6b0P2PXjys3js/gu3KTq4+/x6P0ZUuxs45wyLMFQ/aUeoQNNt7ZD61UTyDj8gdq2uPPl+enx0CHnhia0wr/5wtxgEaIkZ+Ds5uY9ECwACxcR8bsm3b3ToBk=",
+        "scale": 0.0032065853010863066,
+        "bias": -7.05571985244751
+      }
+    }
+  },
+  "vase": {
+    "method": "Text prompts blended with a visual prompt from a labeled LVIS example",
+    "reference_photos": [
+      "https://images.cocodataset.org/train2017/000000202928.jpg"
+    ],
+    "head": {
+      "80": {
+        "filter": "E/D+E+W99RzYALD0HoH0+x0i/wz/1v8Y0PgIB+vGI/LXw9zrCd0AOwrV5SJS5+Du7/b0Cuzi8O3s2wUNOQbvyxcQEffh1Oy93/gj7Q3//eLFJuPnIJPc8hzoBf7P2A7swOftIvUT6+TpCb359Af3/PMP7gTsIQQAE+Tf+Oqrm8Y=",
+        "scale": 0.004518577829003334,
+        "bias": -2.3795948028564453
+      },
+      "40": {
+        "filter": "8Awj19T8/gTS8QDg5+zy2vzGAQf4Cfnw9f8g+An7BS3v+xvY3//14u/cARD5BP31FNMF8wAB9gf8/wr8+PL37dwO+wAT+vXx4gLy6v0NgQXzBMvtBe341wH57tvvA9br+fz3Avru8twJ8vXK2NbtAPvX5+YN6OACGuMESg3099k=",
+        "scale": 0.006230737082660198,
+        "bias": -0.9484043121337891
+      },
+      "20": {
+        "filter": "8PkEAPoXAu8D3gr1LgLv8e8V7JkHwdXR8+flqucD3eT+FeX6/PUcHQ0OBff93ufc4Bb9/PfQ7P3S8fwJ6ulI2t0C4fcb9s3i2M3hCA/a+hv1DOnw4/j7B7cJCPbo1Pz+yegOCeMFyPEiB/kKAQHl/iD51voHLecU5+YB6uD8gfQ=",
+        "scale": 0.006049254443496466,
+        "bias": -2.4421939849853516
+      }
+    }
+  },
+  "wall clock": {
+    "method": "Text prompts blended with a visual prompt from a labeled LVIS example",
+    "reference_photos": [
+      "https://images.cocodataset.org/train2017/000000065329.jpg"
+    ],
+    "head": {
+      "80": {
+        "filter": "+tQFNejgQMvnDs2m6LT73DEh/gnn3iju5qsJFhT6GCoP9+0Q3N33LuUAucde9wz55vEp0fCBB98I6fvj4AHi+uvfJgHX1vbTBBsT6ADjAfHxydLmvPfD+++r3/Li9xf/GPwT9AoE8OYKCuH64wv69Kf/6f/q7b0rFPcMIeUALy0=",
+        "scale": 0.004623754881322384,
+        "bias": -5.738393783569336
+      },
+      "40": {
+        "filter": "5xvuEAP4IPAI8OYO777t1eb/D+e/Cgva/SArBPEB/TrL7vAW4ATv5/8GECXyzBMD3uHyyuIa6M8PDe7b+f7o950JzgkA4ugFFuvPARQUgQYT8+3cHgsCACAH+/wU5OQHxe4TCwUK8wHM5LUO2xf+5/PtBcoD6rvPufffTggQ/vI=",
+        "scale": 0.004924863111227751,
+        "bias": -2.6537532806396484
+      },
+      "20": {
+        "filter": "y+UN3NfvCSvy6+zhAtb65fvoBIHr4eUx4sQR+gD6+LrrABUl+eX7SxwFzAXn+Qz29AES/+L+3vTdF/r3AAwxBuPx/v0lCtnhttXx8AXtyg4FzeIL6wnb8O/+0fAcFPoM1hUJ5/0lBvcUDgLs3jAE7OYX1A7xHhgRBALZ+vURoxE=",
+        "scale": 0.00605528149753809,
+        "bias": -6.25869607925415
+      }
+    }
+  },
+  "wheelchair": {
+    "method": "Text prompts blended with a visual prompt from a labeled LVIS example",
+    "reference_photos": [
+      "https://images.cocodataset.org/train2017/000000467790.jpg"
+    ],
+    "head": {
+      "80": {
+        "filter": "Eb0Sge4EMK7Kx9fIBZ/38QwuwtLgwBiuzvwm98nbvgn4tBUeIJ8MWdPm0EReEvxW0RTwHPiO5uwc7TXcGiIG3M2mGFnPAb76ksXB4afI3aP62uecEBciP8L42BEsHfTv0AHpJBkR8Yzlq6zGNwQe2wEJ59C8wpHz88r7LSQE9Ag=",
+        "scale": 0.0032402495853602886,
+        "bias": -4.138887405395508
+      },
+      "40": {
+        "filter": "ADYh7szy/iSQ/DYFH9LctAO9LDKBzSDI3L8J7djjAC2r1ekH39gT48sb9+3XzODkxwfOICnoyuMkvdkS97YfGKfv9O3EvT3v9sj6/cjfgV3iyaTRGZD5IyQTYa/48d/Slia/pwr7AiH1HIjN9Rz05NsF6PMav5P0Jc3XbwhJpbI=",
+        "scale": 0.0032741858158260584,
+        "bias": -3.581075668334961
+      },
+      "20": {
+        "filter": "IPH5ys7r6AH+Fv73D9fD1PrrEoEK/tUn9yTj5PL1Ch0N2Pci2+z4HRbhEdQX9/Db+MDqEvsDCRPU9NAJEPhAEez4+gYiB7v01cXx+gH83TJVzCID4uvn/eTjLMX40Rf8v9cZ8uQC9P4rCd3v9fT18v7/DOIXHfkZ3s8G+Nz+oNo=",
+        "scale": 0.005976587999612093,
+        "bias": -7.135573863983154
+      }
+    }
+  },
+  "wrench": {
+    "method": "Text prompts blended with a visual prompt from a labeled LVIS example",
+    "reference_photos": [
+      "https://images.cocodataset.org/train2017/000000404388.jpg"
+    ],
+    "head": {
+      "80": {
+        "filter": "6R6tEubCKwHl3/TD/IH+9V/m0d7rBK7dBLT5+Qfa5ykFGMgCDwXi9xMUrQAOwQy37M3mM+as6hy+EMvcHsG158GR7QXB7QW6vbMNIO3a6eLlF8HMi1LZBvLkBgDkBwny7wE+DOg9G7PeMb75Ij8yBech+0H95scUCKa//vDZCwU=",
+        "scale": 0.003340365830808878,
+        "bias": -5.116803169250488
+      },
+      "40": {
+        "filter": "IhH/GicJ7vnP3/of8QL11e/1A/rT9BP/ERUm6vQF7+q19/39Fd3MHe8g0wg84Pnqzvzu5gEQGcTQ9OsM/sPMALfk1QEJx+/vEeAE/Nr2geLP1+Lw2gf58Or3AAES5tv86hj7A+Xy8fQR2xLl8Pr4y/Hs/urw9fTQFO8Oa/sOz/M=",
+        "scale": 0.004860516171902418,
+        "bias": -1.4397430419921875
+      },
+      "20": {
+        "filter": "4gz6897K3tT8GeLrEMLHxaUV/4EEHNk+K+0N2czu9wbPABAU7vff7uj/2xjl5O4cAPPp9qgB/9/78AP5EQRM78zq4fAU6drs9iwj9uwhJ0zm608GxdbQpg4SttUQzOTht0jf7QE55No96LLh+gLx3vnd5hnj4SL5C/n9/M8DiRo=",
+        "scale": 0.00419966783374548,
+        "bias": -6.09817361831665
+      }
+    }
+  },
+  "wristwatch": {
+    "method": "Text prompts blended with a visual prompt from a labeled LVIS example",
+    "reference_photos": [
+      "https://images.cocodataset.org/train2017/000000216044.jpg"
+    ],
+    "head": {
+      "80": {
+        "filter": "8Q/6BbjY+OQDFB3m54EU1TYTA/65BdPsFt/F//jOuzAqGrow8Pjx5M0Am9ttCcYw+w/2u6/f5e7+zwMF7Lfv2NzlEvrYqxG15wc03ZPrDA3xA8II2STr6Nju6/afEuf37ebzA/PqzMbyCA7YE+QoBxjXwysr8N0BML3aJNTmB94=",
+        "scale": 0.003984971437603235,
+        "bias": -4.646766662597656
+      },
+      "40": {
+        "filter": "+gvS/fgsGQT51uj+7hPWxfXaERAE7Nz4vf4uAuHj6Q/x2/bg99PA1ufzwsrs+gjFAtDn/g4H7OrGHxAu8cTG+Y7I0NHa8Qf2GeXBDKILlsTdASEMNRYP7QIT6P0uB+LfszUMA9Pm/OP48RD34f7+AtfmNfPa/Lnm3CXVf/IJ2hg=",
+        "scale": 0.004063622560352087,
+        "bias": -2.59793758392334
+      },
+      "20": {
+        "filter": "8/n39QHCBN/9/xHg9tr+1+biAIH+7OsRA/sS7ez+2fDn9OT45NcNJhgUBSbrAPsJ9Rzd99wL2dDvGu4NMuwzFegA69wq9QYN6QcD5iML2hL6BPLu2w7t6vIX4foNAPcH8xr43fP6+vIP4/zk8uD9+ib23fDE7C8G9gPmJvXxvf4=",
+        "scale": 0.00549010606482625,
+        "bias": -7.658499717712402
+      }
+    }
+  }
+}

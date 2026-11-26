@@ -1,6 +1,7 @@
 import 'dart:ui';
 
 import '../core/cue_language.dart';
+import '../core/cue_strings.dart';
 
 /// Where the recognised text sits inside the frame, in upright coordinates.
 ///
@@ -63,40 +64,30 @@ class TextLayout {
 enum AimingCue { tooDark, tooClose, tooFar, moveLeft, moveRight, nothingFound }
 
 extension AimingCueSpeech on AimingCue {
-  String get speech {
-    switch (this) {
-      case AimingCue.tooDark:
-        return 'Too dark.';
-      case AimingCue.tooClose:
-        return 'Too close.';
-      case AimingCue.tooFar:
-        return 'Too far.';
-      case AimingCue.moveLeft:
-        return 'Move left.';
-      case AimingCue.moveRight:
-        return 'Move right.';
-      case AimingCue.nothingFound:
-        return 'No text.';
-    }
-  }
+  String get speech => speechFor(CueLanguage.english);
 
-  /// The same instruction in the user's reading language.
   String speechFor(CueLanguage language) {
-    if (!language.isHindi) return speech;
-    switch (this) {
-      case AimingCue.tooDark:
-        return 'बहुत अंधेरा है।';
-      case AimingCue.tooClose:
-        return 'बहुत पास है।';
-      case AimingCue.tooFar:
-        return 'बहुत दूर है।';
-      case AimingCue.moveLeft:
-        return 'बाएँ जाएँ।';
-      case AimingCue.moveRight:
-        return 'दाएँ जाएँ।';
-      case AimingCue.nothingFound:
-        return 'पाठ नहीं दिख रहा।';
-    }
+    final strings = CueStrings(language);
+    return switch (this) {
+      AimingCue.tooDark => strings.lightForText,
+      AimingCue.tooClose =>
+        language.isHindi
+            ? 'फ़ोन को पाठ से थोड़ा दूर करें।'
+            : 'Move the phone a little farther from the text.',
+      AimingCue.tooFar =>
+        language.isHindi
+            ? 'फ़ोन को पाठ के थोड़ा पास लाएँ।'
+            : 'Move the phone a little closer to the text.',
+      AimingCue.moveLeft =>
+        language.isHindi
+            ? 'फ़ोन को थोड़ा बाईं ओर ले जाएँ।'
+            : 'Move the phone a little to the left.',
+      AimingCue.moveRight =>
+        language.isHindi
+            ? 'फ़ोन को थोड़ा दाईं ओर ले जाएँ।'
+            : 'Move the phone a little to the right.',
+      AimingCue.nothingFound => strings.aimAtText,
+    };
   }
 }
 

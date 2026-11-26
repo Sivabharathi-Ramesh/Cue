@@ -7,6 +7,11 @@ void main() {
     expect(parseVoiceCommand('find a key'), VoiceCommand.findKeys);
     expect(parseVoiceCommand('find a pen'), VoiceCommand.findPen);
     expect(parseVoiceCommand('find my phone'), VoiceCommand.findPhone);
+    expect(
+      parseVoiceCommand('find my phone charger'),
+      VoiceCommand.findCharger,
+    );
+    expect(parseVoiceCommand('find the remote'), VoiceCommand.findRemote);
     expect(parseVoiceCommand('चश्मा ढूंढो'), VoiceCommand.findGlasses);
     expect(parseVoiceCommand('कलम खोजो'), VoiceCommand.findPen);
     expect(parseVoiceCommand('find the water bottle'), VoiceCommand.findBottle);
@@ -125,9 +130,13 @@ void main() {
       expect(parseVoiceCommand('note'), VoiceCommand.banknoteMode);
     });
 
-    test('screen mode is a mode, not a preview', () {
+    test('screen watch can be started and stopped by voice', () {
       expect(parseVoiceCommand('screen mode'), VoiceCommand.screenMode);
       expect(parseVoiceCommand('screen'), VoiceCommand.screenMode);
+      expect(parseVoiceCommand('watch the screen'), VoiceCommand.screenMode);
+      expect(parseVoiceCommand('स्क्रीन देखो'), VoiceCommand.screenMode);
+      expect(parseVoiceCommand('stop watching the screen'), VoiceCommand.stop);
+      expect(parseVoiceCommand('स्क्रीन देखना बंद'), VoiceCommand.stop);
     });
   });
 
@@ -303,9 +312,21 @@ void main() {
     test('what is this asks for a read or a description', () {
       expect(parseVoiceCommand('what is this'), VoiceCommand.whatIsThis);
       expect(parseVoiceCommand("what's that?"), VoiceCommand.whatIsThis);
-      expect(parseVoiceCommand('what do you see'), VoiceCommand.whatIsThis);
       expect(parseVoiceCommand('यह क्या है'), VoiceCommand.whatIsThis);
     });
+
+    test(
+      'a detail request starts the focused object scan in both languages',
+      () {
+        for (final command in [
+          'describe in detail',
+          'describe this in detail',
+          'विस्तार से बताओ',
+        ]) {
+          expect(parseVoiceCommand(command), VoiceCommand.describeDetail);
+        }
+      },
+    );
 
     test('a bare language request toggles, a named one does not', () {
       expect(parseVoiceCommand('change language'), VoiceCommand.toggleLanguage);

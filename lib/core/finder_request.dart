@@ -55,7 +55,8 @@ SearchTarget? builtInFinderTarget(String name) {
   for (final target in SearchTarget.values) {
     if (query == normalizeItemName(target.english) ||
         query == normalizeItemName(target.hindi) ||
-        target.labels.contains(query)) {
+        target.labels.contains(query) ||
+        target.aliases.contains(query)) {
       return target;
     }
   }
@@ -79,5 +80,24 @@ PersonalItem? taughtFinderItem(Iterable<PersonalItem> items, String name) {
   for (final item in items) {
     if (item.key == key) return item;
   }
-  return null;
+  if (!_penDriveNames.contains(key)) return null;
+
+  // Voice recognition can use a different name for the same USB drive.
+  // Keep exact saved names usable when more than one drive has been taught.
+  final matches = items
+      .where((item) => _penDriveNames.contains(item.key))
+      .take(2)
+      .toList();
+  return matches.length == 1 ? matches.single : null;
 }
+
+const _penDriveNames = {
+  'pen drive',
+  'pendrive',
+  'usb drive',
+  'usb flash drive',
+  'usb stick',
+  'flash drive',
+  'thumb drive',
+  'पेन ड्राइव',
+};

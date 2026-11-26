@@ -35,12 +35,16 @@ class CueStrings {
 
   String get readingLabel => _hi ? 'पढ़ रहा हूँ' : 'Reading';
 
+  String get readyToRead => _hi ? 'पढ़ने के लिए तैयार' : 'Ready to read';
+
   String get listeningHint => _hi ? 'कमांड बोलें' : 'Say a command';
 
   String get holdVolumeHint =>
       _hi ? 'बोलने के लिए वॉल्यूम डाउन दबाए रखें' : 'Hold volume down to speak';
 
   String get readingPausedLabel => _hi ? 'पढ़ना रुका हुआ' : 'Reading paused';
+
+  String get resumeReading => _hi ? 'पढ़ना जारी रखें' : 'Resume reading';
 
   String get resumeHint =>
       _hi ? 'जारी रखने के लिए दो बार टैप करें' : 'Double tap to resume';
@@ -79,15 +83,20 @@ class CueStrings {
 
   String get paused => _hi ? 'रुका हुआ।' : 'Paused.';
 
-  String get readingNow => _hi ? 'पढ़ रहा हूँ।' : 'Reading now.';
+  String get checkingForText =>
+      _hi ? 'लिखा हुआ पाठ ढूँढ रहा हूँ।' : 'Checking for text.';
 
   String get help => _hi
-      ? 'नियंत्रण। बोलने के लिए वॉल्यूम डाउन दबाए रखें। कमांड: पढ़ो, रुको, दोहराओ, ठहरो, जारी रखो, अगला, पिछला, शुरू से, धीरे, तेज़, समय, तारीख, लोकेशन, और मोड: पाठ, वस्तु, नोट। अभी पढ़ने के लिए दो बार टैप करें।'
-      : 'Controls. Hold volume down to speak. Commands: read, stop, repeat, pause, resume, next, back, start over, slower, faster, time, date, location, and modes: text, object, banknote. Double tap to read now.';
+      ? 'नियंत्रण। बोलने के लिए वॉल्यूम डाउन दबाए रखें। कमांड: पढ़ो, रुको, दोहराओ, ठहरो, जारी रखो, अगला, पिछला, शुरू से, धीरे, तेज़, समय, तारीख, लोकेशन, और मोड: पाठ, वस्तु, नोट। अभी पढ़ने के लिए दो बार टैप करें। कंप्यूटर स्क्रीन में दिख रहे बदलाव सुनने के लिए स्क्रीन देखो कहें।'
+      : 'Controls. Hold volume down to speak. Commands: read, stop, repeat, pause, resume, next, back, start over, slower, faster, time, date, location, and modes: text, object, banknote. Double tap to read now. Say Watch the screen to hear visible changes on a computer screen.';
 
   String get helpHowTo => _hi
       ? 'बोलने के लिए वॉल्यूम डाउन दबाए रखें।'
       : 'Hold volume down to speak.';
+
+  String get shakeForHelp => _hi
+      ? 'मदद के लिए फ़ोन को दो बार दाएँ-बाएँ हिलाएँ, या स्क्रीन को दबाए रखें।'
+      : 'For help, move the phone side to side twice, or touch and hold the screen.';
 
   // --- Natural questions ----------------------------------------------------
 
@@ -167,11 +176,17 @@ class CueStrings {
 
   // --- Reading honestly -----------------------------------------------------
 
-  String get notSureNoText =>
-      _hi ? 'पाठ नहीं दिख रहा। स्थिर रखें।' : 'No text visible. Hold steady.';
+  String get aimAtText => _hi
+      ? 'पीछे का कैमरा लिखे हुए पाठ की ओर रखें।'
+      : 'Point the rear camera at the text.';
 
-  String get marksNotReadable =>
-      _hi ? 'पाठ पढ़ा नहीं जा रहा।' : 'Unreadable text.';
+  String get lightForText => _hi
+      ? 'पाठ पर थोड़ी और रोशनी डालकर देखें।'
+      : 'Try adding more light to the text.';
+
+  String get steadyForText => _hi
+      ? 'कैमरे को पाठ की ओर रखते हुए फ़ोन स्थिर रखें।'
+      : 'Hold the phone steady with the camera aimed at the text.';
 
   String get somethingThere =>
       _hi ? 'पहचान नहीं पाया।' : 'Unrecognised object.';
@@ -233,8 +248,8 @@ class CueStrings {
   // --- Modes ----------------------------------------------------------------
 
   String get objectModeAnnouncement => _hi
-      ? 'वस्तु मोड। सामने की चीज़ों का विवरण सुनने के लिए दो बार टैप करें।'
-      : 'Object mode. Double tap to describe what’s in view.';
+      ? 'वस्तु मोड। किसी चीज़ की ओर कैमरा करके दो बार टैप करें। चाबी के लिए चाबी खोजो कहें।'
+      : 'Object mode. Point at an item and double tap, or say Find my keys.';
 
   /// Banknote mode is built for English first.
   ///
@@ -267,7 +282,28 @@ class CueStrings {
       ? somethingThere
       : 'More than one note value is in view. Show one note at a time.';
 
-  String get textModeAnnouncement => _hi ? 'पाठ मोड।' : 'Text mode.';
+  String get textModeAnnouncement =>
+      '${_hi ? 'पाठ मोड।' : 'Text mode.'} $textTapHint';
+
+  String get textScreenGuide => _hi
+      ? 'कैमरा कंप्यूटर स्क्रीन की ओर रखें और फ़ोन स्थिर रखें। क्यू स्क्रीन पर दिख रहे बदलाव और निर्देश बताएगा। बंद करने के लिए स्क्रीन देखना बंद कहें।'
+      : 'Point the rear camera at the display and hold it steady. Cue will report visible changes and prompts. Say Stop watching to finish.';
+
+  String get watchScreen => _hi ? 'स्क्रीन देखें' : 'Watch screen';
+  String get watchingScreen => _hi ? 'स्क्रीन देख रहा है' : 'Watching screen';
+  String get stopWatchingScreen =>
+      _hi ? 'स्क्रीन देखना बंद करें' : 'Stop watching';
+  String get screenWatchStopped =>
+      _hi ? 'स्क्रीन देखना बंद किया।' : 'Screen watch stopped.';
+  String get screenMovement => _hi
+      ? 'स्क्रीन के दृश्य में हलचल दिख रही है।'
+      : 'I can see movement in the screen view.';
+  String screenUnchanged(int seconds) => _hi
+      ? 'स्क्रीन के दृश्य में कम से कम $seconds सेकंड से कोई बदलाव नहीं दिखा।'
+      : 'No visible change in the screen view for at least $seconds seconds.';
+  String get screenUnclear => _hi
+      ? 'स्क्रीन साफ़ नहीं दिख रही। कैमरा स्क्रीन की ओर रखें और फ़ोन स्थिर रखें।'
+      : 'The screen view is unclear. Aim at the display and hold the phone steady.';
 
   String modeName(String englishLabel) {
     if (!_hi) return englishLabel;
@@ -291,6 +327,8 @@ class CueStrings {
 
   String get semanticsLive => _hi ? 'क्यू। लाइव कैमरा।' : 'Cue. Live camera.';
 
+  String get semanticsText => _hi ? 'क्यू। पाठ मोड।' : 'Cue. Text mode.';
+
   String get semanticsPaused => _hi ? 'क्यू। रुका हुआ।' : 'Cue. Paused.';
 
   String get semanticsListening =>
@@ -311,9 +349,13 @@ class CueStrings {
 
   String get actionReadNow => _hi ? 'अभी पढ़ो' : 'Read now';
 
+  String get textTapHint => _hi
+      ? 'कैमरा पाठ की ओर रखें, फिर पढ़ने के लिए दो बार टैप करें।'
+      : 'Point the camera at the text, then double tap to read.';
+
   String get objectTapHint => _hi
-      ? 'विवरण सुनने के लिए दो बार टैप करें।'
-      : 'Double tap for a description.';
+      ? 'किसी चीज़ की ओर कैमरा करके दो बार टैप करें।'
+      : 'Point at an item and double tap to identify it.';
 
   String objectTooDark({required bool torchOn}) {
     if (torchOn) {
@@ -332,25 +374,50 @@ class CueStrings {
   String get objectTooBlurry => _hi
       ? 'तस्वीर साफ़ नहीं है। फ़ोन स्थिर रखकर फिर कोशिश करें।'
       : 'The view is unclear. Hold still and try again.';
+  String get objectScanUnavailable => _hi
+      ? 'अभी चीज़ें पहचानने में दिक्कत है। फिर से कोशिश करें।'
+      : 'Object detection is unavailable right now. Try again.';
+
+  String get checkingObjectDetails =>
+      _hi ? 'चीज़ को पास से देख रहा हूँ।' : 'Checking the close-up.';
+
+  String get aimAtItem => _hi
+      ? 'चीज़ पहचानने में मुश्किल हो रही है। एक चीज़ पीछे के कैमरे के सामने रखें और फ़ोन स्थिर रखें।'
+      : 'I’m unsure what’s in view. Hold one item steady in front of the rear camera.';
+
+  String visibleObjectText(String text) =>
+      _hi ? 'इस हिस्से में लिखा है, $text।' : 'The visible text reads, $text.';
+
   String lastScan(String text) =>
       _hi ? 'पिछला जवाब: $text' : 'Last answer: $text';
 
   String get findItem => _hi ? 'चीज़ खोजें' : 'Find an item';
   String get itemName => _hi ? 'चीज़ का नाम' : 'Item name';
+  String get typeItemName => _hi ? 'नाम लिखें' : 'Type a name';
   String get sayItemName => _hi ? 'नाम बोलें' : 'Say the name';
-  String heardItemName(String name) => _hi ? '$name सुना।' : 'Heard $name.';
+  String get sayWhatToFind => _hi ? 'बताएँ क्या खोजना है' : 'Say what to find';
+  String finderPrompt({required bool hasVolumeShortcut}) {
+    if (hasVolumeShortcut) {
+      return _hi
+          ? 'क्या खोजना है? आवाज़ कम करने वाला बटन दबाकर रखें और नाम बोलें, जैसे चाबी।'
+          : 'What should I find? Hold volume down and say a name, like keys.';
+    }
+    return _hi
+        ? 'बताएँ क्या खोजना है चुनें और नाम बोलें, जैसे चाबी।'
+        : 'Choose Say what to find and say a name, like keys.';
+  }
+
   String get startSearch => _hi ? 'खोज शुरू करें' : 'Start search';
-  String get browseItems => _hi ? 'सूची से चुनें' : 'Choose from a list';
   String get commonItems => _hi ? 'आम चीज़ें' : 'Common items';
+  String get moreCommonItems => _hi ? 'और आम चीज़ें' : 'More common items';
   String get myItems => _hi ? 'मेरी चीज़ें' : 'My items';
   String get teachItem => _hi ? 'नई चीज़ सिखाएँ' : 'Teach an item';
   String get cancel => _hi ? 'रद्द करें' : 'Cancel';
   String get next => _hi ? 'आगे' : 'Continue';
-  String get captureExample => _hi ? 'उदाहरण लें' : 'Capture example';
-  String get capturingExample =>
-      _hi ? 'उदाहरण ले रहे हैं' : 'Capturing example';
-  String get retakeExample =>
-      _hi ? 'पिछला उदाहरण फिर लें' : 'Retake last example';
+  String get startCapture => _hi ? 'फ़ोटो लेना शुरू करें' : 'Start capture';
+  String get capturingExample => _hi ? 'फ़ोटो ली जा रही है' : 'Taking photo';
+  String get retryCapture => _hi ? 'फिर से फ़ोटो लें' : 'Retry capture';
+  String get changeItemName => _hi ? 'नाम बदलें' : 'Change name';
   String get saveItem => _hi ? 'चीज़ सहेजें' : 'Save item';
   String get savingItem => _hi ? 'चीज़ सहेज रहे हैं' : 'Saving item';
   String get itemNameNeeded =>
@@ -360,7 +427,7 @@ class CueStrings {
   String get confirmReplace => _hi ? 'बदलें' : 'Replace';
   String get removeItem => _hi ? 'हटाएँ' : 'Remove';
   String replaceItemQuestion(String name) =>
-      _hi ? '$name के उदाहरण बदलें?' : 'Replace the examples for $name?';
+      _hi ? '$name की फ़ोटो बदलें?' : 'Replace the photos for $name?';
   String removeItemQuestion(String name) =>
       _hi ? '$name को हटाएँ?' : 'Remove $name?';
   String removeItemLabel(String name) => _hi ? '$name हटाएँ' : 'Remove $name';
@@ -377,41 +444,80 @@ class CueStrings {
       ? 'चीज़ हटा नहीं सका। फिर से कोशिश करें।'
       : 'Cue couldn’t remove the item. Try again.';
   String get itemCaptureError => _hi
-      ? 'उदाहरण नहीं ले सका। कैमरा जाँचकर फिर से कोशिश करें।'
-      : 'Cue couldn’t capture that example. Check the camera and try again.';
+      ? 'फ़ोटो नहीं ले सका। कैमरा जाँचकर फिर से कोशिश करें।'
+      : 'Cue couldn’t take the photo. Check the camera and try again.';
   String get itemCaptureUnclear => _hi
-      ? 'चीज़ को खाली सतह पर रखें, कैमरा उसके ठीक ऊपर लाएँ और फिर कोशिश करें।'
-      : 'Put the item on a clear surface, aim directly over it, and try again.';
+      ? 'चीज़ साफ़ नहीं दिखी। उसे छूकर उसकी जगह पता करें और फ़ोन उसके ठीक ऊपर रखें। फिर हाथ हटा लें।'
+      : 'The item wasn’t clear. Find it by touch, hold the rear camera directly above it, and move your hand away.';
   String get itemCaptureDifferent => _hi
-      ? 'उसी चीज़ को कैमरे के बीच रखें और उसका कोण थोड़ा बदलकर फिर से लें।'
-      : 'Keep the same item in the centre and try a smaller change in angle.';
+      ? 'यह फ़ोटो पिछली फ़ोटो से अलग है। फ़ोन उसी चीज़ के ठीक ऊपर रखें।'
+      : 'This photo looks different from the earlier one. Hold the phone over the same item.';
+  String get itemCaptureDark => _hi
+      ? 'फ़ोटो के लिए रोशनी कम है। चीज़ को रोशनी वाली जगह पर रखें।'
+      : 'There’s too little light for the photo. Move the item to a brighter spot.';
+  String get teachingAutoRetry => _hi
+      ? 'मैं थोड़ी देर में फिर फ़ोटो लूँगा।'
+      : 'I’ll try the photo again in a moment.';
+  String teachingRetryControl({required bool hasVolumeShortcut}) {
+    if (hasVolumeShortcut) {
+      return _hi
+          ? 'तैयार होने पर आवाज़ कम करने वाला बटन दबाकर रखें।'
+          : 'When ready, hold volume down to retry.';
+    }
+    return _hi ? 'फिर से फ़ोटो लें चुनें।' : 'Choose Retry capture when ready.';
+  }
+
   String get unrecognizedItem => _hi
       ? 'इस नाम की चीज़ सिखाएँ या सूची से चुनें।'
       : 'Teach Cue this item, or choose an item from the list.';
+  String findItemNextStep(String name) => _hi
+      ? '$name को खोजने के लिए पहले $name सीखो कहें। सामने की चीज़ जानने के लिए विस्तार से बताओ कहें।'
+      : 'To search for $name, first say Teach my $name. To check an item in front of you, say Describe in detail.';
   String get nameNotHeard => _hi
       ? 'नाम सुनाई नहीं दिया। नाम लिखें या फिर से बोलें।'
       : 'Cue didn’t hear a name. Type it or try speaking again.';
   String teachingItem(String name) => _hi ? '$name सिखाएँ' : 'Teach $name';
+  String teachNamePrompt({required bool hasVolumeShortcut}) {
+    if (hasVolumeShortcut) {
+      return _hi
+          ? 'कौन-सी चीज़ याद रखनी है? आवाज़ कम करने वाला बटन दबाकर रखें और नाम बोलें, जैसे नीला बटुआ।'
+          : 'What should Cue remember? Hold volume down and say a name, like blue wallet.';
+    }
+    return _hi
+        ? 'कौन-सी चीज़ याद रखनी है? नाम बोलें चुनें और उसका नाम बोलें।'
+        : 'What should Cue remember? Choose Say the name and speak the item’s name.';
+  }
+
+  String teachPlacement({required bool hasVolumeShortcut}) {
+    final start = hasVolumeShortcut
+        ? (_hi
+              ? 'तैयार होने पर आवाज़ कम करने वाला बटन दबाकर रखें।'
+              : 'When ready, hold volume down.')
+        : (_hi
+              ? 'तैयार होने पर फ़ोटो लेना शुरू करें चुनें।'
+              : 'When ready, choose Start capture.');
+    return _hi
+        ? 'चीज़ को खाली सतह पर रखें। उसे छूकर उसकी जगह पता करें। पीछे का कैमरा उस जगह से एक बित्ते की दूरी पर ठीक ऊपर रखें और नीचे की ओर करें। चीज़ से हाथ हटा लें। $start क्यू तीन फ़ोटो लेकर चीज़ सहेजेगा।'
+        : 'Put the item on a clear surface. Find it by touch. Hold the rear camera one handspan above that spot, pointing straight down. Move your other hand away. $start I’ll guide you through three photos and save the item.';
+  }
+
   String teachingProgress(int count, int total) =>
-      _hi ? '$total में से $count उदाहरण' : '$count of $total examples';
+      _hi ? '$total में से $count फ़ोटो' : '$count of $total photos';
   String teachingPrompt(int count) => switch (count) {
     0 =>
       _hi
-          ? 'चीज़ को खाली सतह पर रखें। कैमरा उसके ठीक ऊपर रखें और पहला उदाहरण लें।'
-          : 'Put the item on a clear surface. Hold the phone directly above it and capture the first example.',
+          ? 'पहली फ़ोटो के लिए फ़ोन स्थिर रखें।'
+          : 'Hold still for the first photo.',
     1 =>
       _hi
-          ? 'चीज़ को थोड़ा घुमाएँ और दूसरा उदाहरण लें।'
-          : 'Turn the item a little and capture the second example.',
-    2 =>
-      _hi
-          ? 'कैमरे का कोण थोड़ा बदलकर आखिरी उदाहरण लें।'
-          : 'Tilt the phone a little and capture the last example.',
+          ? 'तीन में से एक फ़ोटो ठीक है। फ़ोन को थोड़ा ऊपर उठाएँ। उसे चीज़ के ठीक ऊपर रखें।'
+          : 'One of three photos accepted. Lift the phone a little, keeping it directly above the item.',
     _ =>
       _hi
-          ? 'सभी उदाहरण तैयार हैं। चीज़ सहेजें।'
-          : 'All examples are ready. Save the item.',
+          ? 'तीन में से दो फ़ोटो ठीक हैं। फ़ोन को थोड़ा तिरछा करें। कैमरा चीज़ की ओर रखें।'
+          : 'Two of three photos accepted. Tilt the phone slightly and keep it pointed at the item.',
   };
+  String get holdForPhoto => _hi ? 'अब फ़ोन स्थिर रखें।' : 'Hold still now.';
   String itemTaught(String name) => _hi
       ? '$name सहेजा गया। अगली बार $name खोजो कहें।'
       : '$name is ready to find. Say Find $name, or choose it under My items.';
@@ -426,6 +532,9 @@ class CueStrings {
   String get itemSearchHint => _hi
       ? 'फ़ोन थोड़ी देर स्थिर रखें, फिर कैमरे का कोण थोड़ा बदलें।'
       : 'Hold the phone still for a moment, then try another angle.';
+  String get itemCandidateHint => _hi
+      ? 'शायद चीज़ दिखी है। जाँच के लिए फ़ोन स्थिर रखें।'
+      : 'Possible match. Hold the phone still while I check.';
   String get itemSearchUnavailable => _hi
       ? 'चीज़ खोजने की सुविधा अभी उपलब्ध नहीं है। फिर से कोशिश करें।'
       : 'Item search is unavailable right now. Try again.';
@@ -449,14 +558,16 @@ class CueStrings {
   String get searchStopped => _hi ? 'खोज बंद।' : 'Search stopped.';
 
   String get objectHelp => _hi
-      ? 'विवरण के लिए दो बार टैप करें। खोजने के लिए चीज़ खोजें चुनें या चाबी खोजो कहें। अपनी चीज़ के लिए नई चीज़ सिखाएँ चुनें। आवाज़ से ऑटो विवरण चालू या बंद कहें। मोड बदलने के लिए दाएँ या बाएँ स्वाइप करें।'
-      : 'Double tap for a description. Tap Find an item or say Find my keys. To add your own item, choose Teach an item. You can also say Automatic descriptions on or off. Swipe sideways to change mode.';
+      ? 'किसी चीज़ की ओर कैमरा करके दो बार टैप करें। पूरे दृश्य के लिए क्या दिख रहा है कहें। चीज़ पर लिखा हुआ सुनने के लिए विस्तार से बताओ कहें। चाबी खोजो कहें या चीज़ खोजें चुनें। चीज़ मिलने पर फ़ोन दो बार हल्का और फिर ज़ोर से कंपन करेगा। अपनी चीज़ जोड़ने के लिए नीला बटुआ सीखो कहें। ऑटो विवरण चालू या बंद कहें। मोड बदलने के लिए दाएँ या बाएँ स्वाइप करें।'
+      : 'Point at an item and double tap to identify it. For the whole view, say What do you see. To hear markings on the item, say Describe in detail. Say Find my keys or choose Find an item. Two quick pulses and a stronger finish signal a match. To add your own item, say Teach my blue wallet. Say Automatic descriptions on or off. Swipe sideways to change mode.';
 
   String autoDescriptions(bool enabled) => _hi
       ? (enabled ? 'ऑटो विवरण चालू' : 'ऑटो विवरण बंद')
       : (enabled ? 'Automatic descriptions on' : 'Automatic descriptions off');
 
   String get describeNow => _hi ? 'विवरण सुनें' : 'Describe now';
+
+  String get describeInDetail => _hi ? 'विस्तार से बताओ' : 'Describe in detail';
 
   String get actionRepeat => _hi ? 'पिछला दोहराओ' : 'Repeat last result';
 

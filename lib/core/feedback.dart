@@ -47,6 +47,39 @@ class Feedback {
     await _vibrate(duration: 55, iosLevel: 'medium');
   }
 
+  /// Cue's signature for a confirmed item match: two quick pulses and a longer finish.
+  Future<void> itemFound() async {
+    await _tone(880, 60, 0.18);
+
+    const tapMs = 60;
+    const tapGapMs = 75;
+    const finalGapMs = 100;
+    final isIos = defaultTargetPlatform == TargetPlatform.iOS;
+    if (!isIos && !_hasVibrator) return;
+
+    try {
+      if (!isIos || await Vibration.hasCustomVibrationsSupport()) {
+        await Vibration.vibrate(
+          pattern: const [0, tapMs, tapGapMs, tapMs, finalGapMs, 170],
+          intensities: const [0, 170, 0, 170, 0, 240],
+        );
+        return;
+      }
+    } catch (_) {
+      // The tone and spoken result are still available if vibration fails.
+    }
+
+    if (!isIos) return;
+    // UIKit impacts keep the rhythm on devices without custom haptics.
+    await _vibrate(iosLevel: 'light');
+    await Future<void>.delayed(const Duration(milliseconds: tapMs + tapGapMs));
+    await _vibrate(iosLevel: 'light');
+    await Future<void>.delayed(
+      const Duration(milliseconds: tapMs + finalGapMs),
+    );
+    await _vibrate(iosLevel: 'heavy');
+  }
+
   /// FR-09 / manual read with nothing usable: low double tone, two pulses.
   Future<void> notSure() async {
     await _tone(330, 80, 0.2);
@@ -133,7 +166,6 @@ class Feedback {
   Future<void> _vibrate({
     int duration = 50,
     List<int>? pattern,
-    // On iOS the vibration package ignores duration/pattern.
     // 'light', 'medium' (default), 'heavy', or 'selection'.
     String iosLevel = 'medium',
   }) async {

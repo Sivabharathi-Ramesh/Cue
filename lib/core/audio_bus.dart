@@ -10,7 +10,7 @@ import 'tts_service.dart';
 
 /// How important a spoken message is.
 /// Higher value wins when two things want to speak at once.
-enum SpeechPriority { info, navigation, answer, alert }
+enum SpeechPriority { info, navigation, answer, help, alert }
 
 /// What a sentence-navigation request did.
 enum ReadingMove {

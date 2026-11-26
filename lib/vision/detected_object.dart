@@ -167,7 +167,6 @@ const Set<String> strictObjectClasses = {
   'handbag',
   'backpack',
   'mobile phone',
-  'keys',
   'wallet',
   'glasses',
   'cup',
@@ -188,6 +187,13 @@ const Set<String> strictObjectClasses = {
   'marker',
   'ruler',
   'charger',
+  'pen drive',
+  'id card',
+  'bank card',
+  'medicine blister pack',
+  'pill organizer',
+  'pill bottle',
+  'eye drop bottle',
   'earphones',
   'headphones',
   'pencil case',
@@ -208,9 +214,6 @@ const double strictClassConfidence = 0.75;
 
 /// Floor below which an ordinary class is almost always a misread.
 const double ordinaryClassConfidence = 0.60;
-
-/// Confidence a manual request requires for a strict class.
-const double strictManualClassConfidence = 0.68;
 
 /// Approximate real-world heights in metres for classes where height is a
 /// stable, meaningful measure.
@@ -296,6 +299,8 @@ const Map<String, Set<String>> confusableObjectGroups = {
   'grooming item': {'comb', 'hairbrush', 'toothbrush'},
   'writing tool': {'pen', 'pencil', 'marker', 'ruler'},
   'utensil': {'knife', 'fork', 'spoon'},
+  'card': {'id card', 'bank card'},
+  'medicine container': {'pill organizer', 'pill bottle', 'eye drop bottle'},
 };
 
 /// How close the top two labels may be before the name is not trusted.
@@ -350,7 +355,7 @@ DetectedObject resolveObjectAmbiguity(
     // other. A separate object elsewhere in the frame must not. The threshold
     // matches the service's duplicate-box merge, so an ambiguous pair is always
     // collapsed to one instance instead of becoming "two small objects".
-    if (_boxIou(object.box, other.box) < 0.55) continue;
+    if (boxIou(object.box, other.box) < 0.55) continue;
     if (rival == null || other.confidence > rival.confidence) rival = other;
   }
 
@@ -363,7 +368,8 @@ DetectedObject resolveObjectAmbiguity(
   );
 }
 
-double _boxIou(Rect a, Rect b) {
+/// Intersection over union for two boxes in the same coordinate space.
+double boxIou(Rect a, Rect b) {
   final intersection = a.intersect(b);
   if (intersection.width <= 0 || intersection.height <= 0) return 0;
   final intersectionArea = intersection.width * intersection.height;
@@ -371,29 +377,19 @@ double _boxIou(Rect a, Rect b) {
   return union <= 0 ? 0 : intersectionArea / union;
 }
 
-/// Whether a detection is strong enough to be spoken on its own.
+/// Whether a scene detection is strong enough to name aloud.
 ///
-/// [lenient] is for a manual double-tap: the user asked, so the bar for
-/// ordinary objects drops a little. Risky classes keep the higher bar either
-/// way, because "carrot" for a pen is not an answer worth giving.
-///
-/// An ambiguous box is different. Cue is not going to say the raw class, only
-/// "small object" or "writing tool", so the ordinary bar is enough: the
-/// sentence is honest even when the fine-grained name is not.
-bool isConfidentDetection(DetectedObject object, {required bool lenient}) {
-  if (object.isAmbiguous) {
-    return object.confidence >= (lenient ? 0.50 : ordinaryClassConfidence);
-  }
-  if (riskyObjectClasses.contains(object.name)) {
-    return object.confidence >= riskyClassConfidence;
-  }
-  if (strictObjectClasses.contains(object.name)) {
-    if (lenient && object.confidence >= strictManualClassConfidence) {
-      return true;
-    }
-    return object.confidence >= strictClassConfidence;
-  }
-  return object.confidence >= (lenient ? 0.50 : ordinaryClassConfidence);
+/// A broad label for an ambiguous box can use the ordinary threshold.
+bool isConfidentDetection(DetectedObject object) {
+  final threshold = switch (object) {
+    DetectedObject(isAmbiguous: true) => ordinaryClassConfidence,
+    DetectedObject(:final name) when riskyObjectClasses.contains(name) =>
+      riskyClassConfidence,
+    DetectedObject(:final name) when strictObjectClasses.contains(name) =>
+      strictClassConfidence,
+    _ => ordinaryClassConfidence,
+  };
+  return object.confidence >= threshold;
 }
 
 /// Minimum frame area expected for large classes.
@@ -450,9 +446,16 @@ const Set<String> _tallClasses = {
 };
 
 /// The finder confirms repeated observations before reporting a position.
-/// The key head has a lower score range, especially for a single small key.
-double searchCandidateConfidence(SearchTarget target) =>
-    target == SearchTarget.keys ? 0.24 : 0.34;
+/// Some small objects need a stronger score to reject similar shapes.
+double searchCandidateConfidence(SearchTarget target) => switch (target) {
+  SearchTarget.keys => 0.24,
+  SearchTarget.wallet ||
+  SearchTarget.remote ||
+  SearchTarget.charger ||
+  SearchTarget.comb ||
+  SearchTarget.mug => ordinaryClassConfidence,
+  _ => 0.34,
+};
 
 /// A deliberate search admits small boxes and moderate target scores so a
 /// tiny, well-localised item can build evidence across multiple frames.
@@ -466,3 +469,23 @@ bool isSearchCandidate(DetectedObject item, SearchTarget target) =>
     item.box.height > 0 &&
     item.area >= 0.00025 &&
     item.area <= 0.94;
+
+/// Maps an upright crop's detection back to the full view. An object cut by a
+/// crop edge may only be a fragment, so skip it.
+Rect? boxInFullFrame(Rect box, Rect crop) {
+  if (!box.isFinite) return null;
+  final clipped = box.intersect(const Rect.fromLTRB(0, 0, 1, 1));
+  if (clipped.isEmpty ||
+      (crop.left > 0 && clipped.left <= 0.01) ||
+      (crop.top > 0 && clipped.top <= 0.01) ||
+      (crop.right < 1 && clipped.right >= 0.99) ||
+      (crop.bottom < 1 && clipped.bottom >= 0.99)) {
+    return null;
+  }
+  return Rect.fromLTWH(
+    crop.left + clipped.left * crop.width,
+    crop.top + clipped.top * crop.height,
+    clipped.width * crop.width,
+    clipped.height * crop.height,
+  );
+}

@@ -6,7 +6,9 @@ import '../core/personal_items.dart';
 import 'detected_object.dart';
 
 class UnclearPersonalExample implements Exception {
-  const UnclearPersonalExample();
+  const UnclearPersonalExample({this.tooDark = false});
+
+  final bool tooDark;
 }
 
 /// Uses the native feature extractor to learn and locate a named item.
@@ -35,13 +37,17 @@ class PersonalItemVision {
     );
   }
 
+  /// With [verifyCrop], score the tighter image already cut from the camera.
   Future<({List<DetectedObject> candidates, ObjectDirection? direction})> find(
     Uint8List jpeg,
     Size frame,
     PersonalItem item, {
     required bool detail,
+    bool verifyCrop = false,
   }) async {
-    final regions = searchRegions(frame, detail: detail);
+    final regions = verifyCrop
+        ? const [Rect.fromLTWH(0, 0, 1, 1)]
+        : searchRegions(frame, detail: detail);
     final features = await _describe(jpeg, regions);
     if (features.format != item.format) {
       throw const FormatException('The item needs an updated visual profile');

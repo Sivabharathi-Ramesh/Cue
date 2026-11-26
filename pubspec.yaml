@@ -49,4 +49,5 @@ dev_dependencies:
 flutter:
   uses-material-design: true
   assets:
-    - assets/models/yoloe26s_everyday_v3_w8a32.tflite
+    - assets/models/yoloe26s_everyday_v4_w8a32.tflite
+    - assets/models/yoloe26s_household_v5_w8a32.tflite

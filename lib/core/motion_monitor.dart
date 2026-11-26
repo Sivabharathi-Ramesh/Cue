@@ -42,6 +42,8 @@ class MotionMonitor {
   final ValueNotifier<MotionSample> sample = ValueNotifier<MotionSample>(
     MotionSample.idle,
   );
+  final _helpShakes = StreamController<void>.broadcast();
+  final _shake = HelpShakeDetector();
 
   StreamSubscription<GyroscopeEvent>? _gyro;
   StreamSubscription<AccelerometerEvent>? _accel;
@@ -53,8 +55,10 @@ class MotionMonitor {
   DateTime _lastEmit = DateTime.fromMillisecondsSinceEpoch(0);
 
   // Low-pass filtered gravity vector, in device coordinates.
+  bool _haveGravity = false;
   double _gravityX = 0;
   double _gravityY = -9.81;
+  double _gravityZ = 0;
 
   bool get isMoving => _moving;
 
@@ -63,31 +67,50 @@ class MotionMonitor {
   /// False on platforms or devices without a gyroscope.
   bool get isSupported => !_unsupported;
 
+  /// One event per deliberate side-to-side shake gesture.
+  Stream<void> get helpShakes => _helpShakes.stream;
+
+  /// Let the user retry immediately when the live screen could not open Help.
+  void rearmHelpShake() => _shake.reset();
+
   Future<void> start() async {
     if (_started) return;
     _started = true;
+    _unsupported = false;
 
+    // Shake Help uses the accelerometer even on phones without a gyroscope.
+    try {
+      _accel = accelerometerEventStream(
+        samplingPeriod: const Duration(milliseconds: 20),
+      ).listen(_onAccelerometer, onError: _onAccelerometerError);
+    } catch (error) {
+      _onAccelerometerError(error);
+    }
     try {
       _gyro = gyroscopeEventStream(
         samplingPeriod: const Duration(milliseconds: 80),
-      ).listen(_onGyroscope, onError: _onError);
-      _accel = accelerometerEventStream(
-        samplingPeriod: const Duration(milliseconds: 80),
-      ).listen(_onAccelerometer, onError: _onError);
-    } catch (_) {
-      _unsupported = true;
+      ).listen(_onGyroscope, onError: _onGyroscopeError);
+    } catch (error) {
+      _onGyroscopeError(error);
     }
   }
 
   Future<void> stop() async {
     if (!_started) return;
     _started = false;
-    await _gyro?.cancel();
-    await _accel?.cancel();
+    final gyro = _gyro;
+    final accel = _accel;
     _gyro = null;
     _accel = null;
     _moving = false;
+    _lastMotionAt = null;
+    _haveGravity = false;
+    _shake.reset();
     sample.value = MotionSample.idle;
+    await Future.wait([
+      if (gyro != null) gyro.cancel(),
+      if (accel != null) accel.cancel(),
+    ]);
   }
 
   void _onGyroscope(GyroscopeEvent event) {
@@ -103,9 +126,22 @@ class MotionMonitor {
   }
 
   void _onAccelerometer(AccelerometerEvent event) {
-    const alpha = 0.15;
-    _gravityX += (event.x - _gravityX) * alpha;
-    _gravityY += (event.y - _gravityY) * alpha;
+    if (!event.x.isFinite || !event.y.isFinite || !event.z.isFinite) return;
+    if (!_haveGravity) {
+      _gravityX = event.x;
+      _gravityY = event.y;
+      _gravityZ = event.z;
+      _haveGravity = true;
+    } else {
+      // Keep roughly the same smoothing at the faster accelerometer cadence.
+      const alpha = 0.04;
+      _gravityX += (event.x - _gravityX) * alpha;
+      _gravityY += (event.y - _gravityY) * alpha;
+      _gravityZ += (event.z - _gravityZ) * alpha;
+    }
+    if (_shake.observe(event, gravity: (_gravityX, _gravityY, _gravityZ))) {
+      _helpShakes.add(null);
+    }
     _emit(DateTime.now());
   }
 
@@ -124,11 +160,93 @@ class MotionMonitor {
     );
   }
 
-  void _onError(Object error) {
+  void _onGyroscopeError(Object _) {
     // No gyroscope (an emulator, a cheap tablet) means no motion gate. The
     // camera's own blur check still applies.
     _unsupported = true;
+    _lastMotionAt = null;
     _moving = false;
+  }
+
+  void _onAccelerometerError(Object _) {
+    _haveGravity = false;
+    _shake.reset();
+  }
+}
+
+/// Recognises two quick side-to-side shakes of the phone.
+///
+/// Three alternating bursts distinguish the start of two shakes from a
+/// single pickup and stop. Projecting across gravity rejects vertical steps.
+class HelpShakeDetector {
+  static const double _minAcceleration = 5.5; // m/s²
+  static const double _directionAlignment = 0.65;
+  static const Duration _minPeakGap = Duration(milliseconds: 65);
+  static const Duration _maxPeakGap = Duration(milliseconds: 360);
+  static const Duration _cooldown = Duration(milliseconds: 2500);
+  static const int _peaksRequired = 3;
+
+  ({double x, double y, double z, DateTime time})? _lastPeak;
+  DateTime? _lastShakeAt;
+  int _peakCount = 0;
+
+  bool observe(
+    AccelerometerEvent event, {
+    required (double, double, double) gravity,
+  }) {
+    final time = event.timestamp;
+    final lastShake = _lastShakeAt;
+    if (lastShake != null && time.difference(lastShake) < _cooldown) {
+      return false;
+    }
+
+    final (gx, gy, gz) = gravity;
+    final gravitySquared = gx * gx + gy * gy + gz * gz;
+    if (gravitySquared < 1) return false;
+    final vertical =
+        (event.x * gx + event.y * gy + event.z * gz) / gravitySquared;
+    final x = event.x - vertical * gx;
+    final y = event.y - vertical * gy;
+    final z = event.z - vertical * gz;
+    final magnitude = math.sqrt(x * x + y * y + z * z);
+    if (magnitude < _minAcceleration) return false;
+
+    final direction = (
+      x: x / magnitude,
+      y: y / magnitude,
+      z: z / magnitude,
+      time: time,
+    );
+    var peakCount = 1;
+    final previous = _lastPeak;
+    if (previous != null) {
+      final gap = time.difference(previous.time);
+      if (gap < _minPeakGap) return false;
+      if (gap <= _maxPeakGap) {
+        final alignment =
+            direction.x * previous.x +
+            direction.y * previous.y +
+            direction.z * previous.z;
+        // Extra samples in the same swing and brief off-axis movements
+        // leave the last real reversal available for the next swing.
+        if (alignment > -_directionAlignment) return false;
+        peakCount = _peakCount + 1;
+      }
+    }
+    _lastPeak = direction;
+    _peakCount = peakCount;
+    if (peakCount < _peaksRequired) return false;
+
+    _lastPeak = null;
+    _peakCount = 0;
+    _lastShakeAt = time;
+    return true;
+  }
+
+  void reset() {
+    _lastPeak = null;
+    _lastShakeAt = null;
+    _peakCount = 0;
   }
 }
 

@@ -19,10 +19,15 @@ enum VoiceCommand {
   textMode,
   objectMode,
   findKeys(SearchTarget.keys),
+  findCharger(SearchTarget.charger),
   findPhone(SearchTarget.phone),
   findGlasses(SearchTarget.glasses),
   findPen(SearchTarget.pen),
   findBottle(SearchTarget.bottle),
+  findWallet(SearchTarget.wallet),
+  findRemote(SearchTarget.remote),
+  findComb(SearchTarget.comb),
+  findMug(SearchTarget.mug),
   banknoteMode,
   screenMode,
   autoDescriptionsOn,
@@ -43,6 +48,8 @@ enum VoiceCommand {
   thanks,
   greeting,
   whatIsThis,
+  describeScene,
+  describeDetail,
   whatMode,
   torchState,
   readingSpeed,
@@ -88,7 +95,11 @@ VoiceCommand parseVoiceCommand(String transcript) {
 
   bool near(String word) => _near(text, word);
 
-  if (has('stop searching') || has('cancel search') || has('खोज बंद')) {
+  if (has('stop searching') ||
+      has('cancel search') ||
+      has('stop watching') ||
+      has('स्क्रीन देखना बंद') ||
+      has('खोज बंद')) {
     return VoiceCommand.stop;
   }
   if (has('find') || has('खोजो') || has('ढूंढो') || has('ढूँढो')) {
@@ -98,6 +109,7 @@ VoiceCommand parseVoiceCommand(String transcript) {
       final names = {
         target.english.toLowerCase(),
         ...target.labels,
+        ...target.aliases,
         if (target == SearchTarget.keys) 'key',
       };
       for (final name in names) {
@@ -266,13 +278,26 @@ VoiceCommand parseVoiceCommand(String transcript) {
     return VoiceCommand.whatIsRight;
   }
 
+  if (has('describe in detail') ||
+      has('describe this in detail') ||
+      has('विस्तार से बताओ') ||
+      has('इसका पूरा विवरण')) {
+    return VoiceCommand.describeDetail;
+  }
+
   // "What is this" is the most natural way to ask for a read or a description.
   // The screen decides which, because only it knows whether object mode is on.
   if (has('what is this') ||
       has('what s this') ||
       has('what is that') ||
       has('what s that') ||
-      has('what do you see') ||
+      has('यह क्या') ||
+      has('ये क्या') ||
+      has('वह क्या')) {
+    return VoiceCommand.whatIsThis;
+  }
+
+  if (has('what do you see') ||
       has('what can you see') ||
       has('what is in front of me') ||
       has('what s in front of me') ||
@@ -280,11 +305,8 @@ VoiceCommand parseVoiceCommand(String transcript) {
       has('what is ahead') ||
       has('describe the scene') ||
       has('describe what you see') ||
-      has('यह क्या') ||
-      has('ये क्या') ||
-      has('वह क्या') ||
       has('क्या दिख')) {
-    return VoiceCommand.whatIsThis;
+    return VoiceCommand.describeScene;
   }
 
   // State questions must beat the switch phrases: "is the torch on" contains
@@ -533,7 +555,11 @@ VoiceCommand parseVoiceCommand(String transcript) {
   }
   if (has('screen mode') ||
       has('switch to screen') ||
+      has('watch the screen') ||
+      has('watch screen') ||
       has('स्क्रीन मोड') ||
+      has('स्क्रीन देखो') ||
+      has('स्क्रीन देखें') ||
       exact('screen') ||
       exact('स्क्रीन')) {
     return VoiceCommand.screenMode;

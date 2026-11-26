@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show HapticFeedback;
 
 import '../core/cue_strings.dart';
+import '../core/finder_request.dart';
 import '../core/personal_items.dart';
 import '../vision/personal_item_vision.dart';
 
@@ -17,6 +20,7 @@ class TeachItemDialog extends StatefulWidget {
     required this.capture,
     required this.save,
     required this.announce,
+    this.volumeShortcut,
     this.initialName = '',
   });
 
@@ -26,7 +30,8 @@ class TeachItemDialog extends StatefulWidget {
   final Future<String?> Function() sayName;
   final Future<PersonalExample> Function() capture;
   final Future<void> Function(PersonalItem) save;
-  final void Function(String) announce;
+  final Future<void> Function(String) announce;
+  final Listenable? volumeShortcut;
   final String initialName;
 
   @override
@@ -34,39 +39,73 @@ class TeachItemDialog extends StatefulWidget {
 }
 
 class _TeachItemDialogState extends State<TeachItemDialog> {
+  static const _repositionTime = Duration(seconds: 4);
+
   CueStrings get _strings => widget.strings;
   late final _name = TextEditingController(text: widget.initialName);
   final _examples = <PersonalExample>[];
   String? _profileName;
+  String? _stepMessage;
   String? _error;
   bool _listening = false;
   bool _working = false;
   bool _saving = false;
   bool get _busy => _listening || _working || _saving;
   bool get _readyToSave => _examples.length == PersonalItem.examplesToTeach;
+  bool get _isActive => mounted && ModalRoute.of(context)?.isCurrent == true;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.volumeShortcut?.addListener(_primaryAction);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_isActive) return;
+      if (widget.initialName.trim().isEmpty) {
+        unawaited(widget.announce(_namePrompt));
+      } else {
+        unawaited(_continue());
+      }
+    });
+  }
 
   @override
   void dispose() {
+    widget.volumeShortcut?.removeListener(_primaryAction);
     _name.dispose();
     super.dispose();
   }
 
   void _report(String error) {
     setState(() => _error = error);
-    widget.announce(error);
+    unawaited(widget.announce(error));
   }
 
-  void _announceStep() =>
-      widget.announce(_strings.teachingPrompt(_examples.length));
+  String get _namePrompt => _strings.teachNamePrompt(
+    hasVolumeShortcut: widget.volumeShortcut != null,
+  );
+
+  String get _placement =>
+      _strings.teachPlacement(hasVolumeShortcut: widget.volumeShortcut != null);
+
+  void _primaryAction() {
+    if (_profileName == null) {
+      unawaited(_sayName());
+    } else {
+      unawaited(_startCapture());
+    }
+  }
 
   Future<void> _sayName() async {
+    if (!_isActive || _busy) return;
     FocusScope.of(context).unfocus();
     setState(() {
       _listening = true;
       _error = null;
     });
-    final name = await widget.sayName();
-    if (!mounted) return;
+    final spoken = await widget.sayName();
+    if (!_isActive) return;
+    final request = spoken == null ? null : FinderRequest.parse(spoken);
+    final name = request?.action == FinderAction.teach ? request!.name : spoken;
     setState(() {
       _listening = false;
       if (name == null) {
@@ -75,11 +114,11 @@ class _TeachItemDialogState extends State<TeachItemDialog> {
         _name.text = name;
       }
     });
-    if (name != null) widget.announce(_strings.heardItemName(name));
+    if (name != null) await _continue();
   }
 
   Future<void> _continue() async {
-    if (_busy) return;
+    if (!_isActive || _busy) return;
     final name = _name.text.trim();
     if (personalItemKey(name).isEmpty) {
       _report(_strings.itemNameNeeded);
@@ -95,10 +134,12 @@ class _TeachItemDialogState extends State<TeachItemDialog> {
     );
     if (alreadySaved) {
       setState(() => _working = true);
+      final question = _strings.replaceItemQuestion(name);
+      unawaited(widget.announce(question));
       final replace = await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
-          title: Text(_strings.replaceItemQuestion(name)),
+          title: Text(question),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context, false),
@@ -111,7 +152,7 @@ class _TeachItemDialogState extends State<TeachItemDialog> {
           ],
         ),
       );
-      if (!mounted) return;
+      if (!_isActive) return;
       setState(() => _working = false);
       if (replace != true) return;
     }
@@ -119,50 +160,103 @@ class _TeachItemDialogState extends State<TeachItemDialog> {
       _profileName = name;
       _error = null;
     });
-    _announceStep();
+    unawaited(widget.announce('${_strings.teachingItem(name)}. $_placement'));
   }
 
-  Future<void> _capture() async {
-    if (_busy || _readyToSave) return;
+  Future<void> _startCapture() async {
+    if (!_isActive || _busy || _profileName == null) return;
+    if (_readyToSave) {
+      await _save();
+      return;
+    }
+    var retry = _error != null;
+    var automaticallyRetried = false;
     setState(() {
       _working = true;
       _error = null;
     });
     try {
-      final example = await widget.capture();
-      if (!mounted || !ModalRoute.of(context)!.isCurrent) return;
-      if (_examples.isNotEmpty &&
-          !_examples.any(
-            (saved) =>
-                saved.format == example.format &&
-                embeddingSimilarity(saved.foreground, example.foreground) >=
-                    0.55,
-          )) {
-        _report(_strings.itemCaptureDifferent);
-        return;
+      while (!_readyToSave) {
+        final count = _examples.length;
+        final reposition = count > 0 && !retry;
+        await _guide(
+          retry ? _strings.holdForPhoto : _strings.teachingPrompt(count),
+        );
+        if (!_isActive) return;
+        if (reposition) {
+          await Future<void>.delayed(_repositionTime);
+          if (!_isActive) return;
+          await _guide(_strings.holdForPhoto);
+          if (!_isActive) return;
+        }
+        await Future<void>.delayed(const Duration(milliseconds: 600));
+        if (!_isActive) return;
+
+        setState(() => _stepMessage = _strings.capturingExample);
+        PersonalExample? example;
+        var captureIssue = _strings.itemCaptureDifferent;
+        try {
+          example = await widget.capture();
+        } on UnclearPersonalExample catch (error) {
+          captureIssue = error.tooDark
+              ? _strings.itemCaptureDark
+              : _strings.itemCaptureUnclear;
+        }
+        if (!_isActive) return;
+        final captured = example;
+        if (captured == null ||
+            (_examples.isNotEmpty &&
+                !_examples.any(
+                  (saved) =>
+                      saved.format == captured.format &&
+                      embeddingSimilarity(
+                            saved.foreground,
+                            captured.foreground,
+                          ) >=
+                          0.55,
+                ))) {
+          if (automaticallyRetried) {
+            final shortcut = _strings.teachingRetryControl(
+              hasVolumeShortcut: widget.volumeShortcut != null,
+            );
+            _report('$captureIssue $shortcut');
+            return;
+          }
+          automaticallyRetried = true;
+          retry = true;
+          await _guide('$captureIssue ${_strings.teachingAutoRetry}');
+          if (!_isActive) return;
+          await Future<void>.delayed(_repositionTime);
+          if (!_isActive) return;
+          continue;
+        }
+        setState(() => _examples.add(captured));
+        unawaited(HapticFeedback.selectionClick());
+        retry = false;
+        automaticallyRetried = false;
       }
-      setState(() => _examples.add(example));
-      HapticFeedback.selectionClick();
-      _announceStep();
-    } on UnclearPersonalExample {
-      if (mounted) _report(_strings.itemCaptureUnclear);
+      await _save();
     } catch (_) {
-      if (mounted) _report(_strings.itemCaptureError);
+      if (_isActive) _report(_strings.itemCaptureError);
     } finally {
       if (mounted) setState(() => _working = false);
     }
   }
 
-  void _retake() {
+  Future<void> _guide(String message) async {
+    setState(() => _stepMessage = message);
+    await widget.announce(message);
+  }
+
+  void _changeName() {
     setState(() {
-      _examples.removeLast();
+      _profileName = null;
       _error = null;
     });
-    _announceStep();
+    unawaited(widget.announce(_namePrompt));
   }
 
   Future<void> _save() async {
-    if (_busy || !_readyToSave) return;
     setState(() {
       _saving = true;
       _error = null;
@@ -170,9 +264,9 @@ class _TeachItemDialogState extends State<TeachItemDialog> {
     try {
       final item = PersonalItem(_profileName!, _examples);
       await widget.save(item);
-      if (mounted) Navigator.pop(context, item);
+      if (mounted && _isActive) Navigator.pop(context, item);
     } catch (_) {
-      if (mounted) _report(_strings.itemSaveError);
+      if (_isActive) _report(_strings.itemSaveError);
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -203,32 +297,32 @@ class _TeachItemDialogState extends State<TeachItemDialog> {
     crossAxisAlignment: CrossAxisAlignment.stretch,
     mainAxisSize: MainAxisSize.min,
     children: [
-      TextField(
-        controller: _name,
-        enabled: !_busy,
-        textInputAction: TextInputAction.next,
-        textCapitalization: TextCapitalization.sentences,
-        onSubmitted: (_) => _continue(),
-        onChanged: (_) {
-          if (_error != null) setState(() => _error = null);
-        },
-        decoration: InputDecoration(
-          labelText: _strings.itemName,
-          errorText: _error,
-          errorMaxLines: 3,
-        ),
-      ),
-      const SizedBox(height: 12),
-      OutlinedButton.icon(
+      FilledButton.icon(
+        autofocus: true,
         onPressed: _busy ? null : _sayName,
         icon: const Icon(Icons.mic),
         label: Text(
           _listening ? _strings.listeningLabel : _strings.sayItemName,
         ),
       ),
-      FilledButton(
-        onPressed: _busy ? null : _continue,
-        child: Text(_strings.next),
+      if (_error case final error?) Text(error),
+      ExpansionTile(
+        tilePadding: EdgeInsets.zero,
+        title: Text(_strings.typeItemName),
+        children: [
+          TextField(
+            controller: _name,
+            enabled: !_busy,
+            textInputAction: TextInputAction.next,
+            textCapitalization: TextCapitalization.sentences,
+            onSubmitted: (_) => _continue(),
+            decoration: InputDecoration(labelText: _strings.itemName),
+          ),
+          TextButton(
+            onPressed: _busy ? null : _continue,
+            child: Text(_strings.next),
+          ),
+        ],
       ),
     ],
   );
@@ -244,35 +338,31 @@ class _TeachItemDialogState extends State<TeachItemDialog> {
         ),
       ),
       const SizedBox(height: 8),
-      Text(_strings.teachingPrompt(_examples.length)),
-      if (!_readyToSave) _preview(),
-      if (_error case final error?)
-        Padding(
-          padding: const EdgeInsets.only(top: 8),
-          child: Text(
-            error,
-            style: TextStyle(color: Theme.of(context).colorScheme.error),
-          ),
-        ),
+      Text(switch ((_saving, _working, _error)) {
+        (true, _, _) => _strings.savingItem,
+        (_, _, final error?) => error,
+        (_, true, _) => _stepMessage ?? _strings.capturingExample,
+        _ => _placement,
+      }),
       const SizedBox(height: 12),
-      if (_readyToSave)
+      if (!_busy)
         FilledButton.icon(
-          onPressed: _busy ? null : _save,
-          icon: const Icon(Icons.check),
-          label: Text(_saving ? _strings.savingItem : _strings.saveItem),
-        )
-      else
-        FilledButton.icon(
-          onPressed: _busy ? null : _capture,
-          icon: const Icon(Icons.camera_alt_outlined),
+          autofocus: true,
+          onPressed: _startCapture,
+          icon: Icon(_readyToSave ? Icons.check : Icons.camera_alt_outlined),
           label: Text(
-            _working ? _strings.capturingExample : _strings.captureExample,
+            _readyToSave
+                ? _strings.saveItem
+                : _error == null
+                ? _strings.startCapture
+                : _strings.retryCapture,
           ),
         ),
-      if (_examples.isNotEmpty)
+      if (!_readyToSave) _preview(),
+      if (!_busy && _examples.isEmpty)
         TextButton(
-          onPressed: _busy ? null : _retake,
-          child: Text(_strings.retakeExample),
+          onPressed: _changeName,
+          child: Text(_strings.changeItemName),
         ),
     ],
   );
