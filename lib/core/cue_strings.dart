@@ -388,6 +388,9 @@ class CueStrings {
   String visibleObjectText(String text) =>
       _hi ? 'इस हिस्से में लिखा है, $text।' : 'The visible text reads, $text.';
 
+  String get objectMoveBack =>
+      _hi ? 'फ़ोन को चीज़ से थोड़ा दूर करें।' : 'Move the phone back a little.';
+
   String lastScan(String text) =>
       _hi ? 'पिछला जवाब: $text' : 'Last answer: $text';
 

@@ -132,9 +132,37 @@ class FramePipeline {
   /// requests ignore it.
   static const Duration _objectNarrationGap = Duration(milliseconds: 1800);
 
+  static const _objectLabelWait = Duration(milliseconds: 750);
+  static const _itemsWithPrintedLabels = {
+    'bottle',
+    'water bottle',
+    'box',
+    'food storage container',
+    'milk carton',
+    'snack packet',
+    'cereal box',
+    'tea box',
+    'tin can',
+    'spice jar',
+    'sauce bottle',
+    'shampoo bottle',
+    'lotion bottle',
+    'pill bottle',
+    'medicine blister pack',
+    'eye drop bottle',
+    'id card',
+    'bank card',
+    'toothpaste tube',
+    'dishwashing liquid bottle',
+    'detergent container',
+    'bread bag',
+    'book',
+  };
+
   ManualObjectScan? _requestedLook;
   Timer? _lookTimeout;
   String? _lookFallback;
+  bool _readingObjectLabel = false;
 
   /// Tracks objects across automatic scans.
   final ObjectTracker _objectTracker = ObjectTracker();
@@ -1176,9 +1204,11 @@ class FramePipeline {
             (tooDark ||
                 quality.sharpness <= 0 ||
                 MotionMonitor.instance.isMoving)) {
-          detectedObjects.value = const [];
-          _lastObjects = const [];
-          _objectTracker.reset();
+          if (tooDark || quality.sharpness <= 0) {
+            detectedObjects.value = const [];
+            _lastObjects = const [];
+            _objectTracker.reset();
+          }
           return;
         }
         if (look != null) {
@@ -1250,14 +1280,32 @@ class FramePipeline {
         hindi: hindi,
         includeDistance: false,
       );
-      // Keep the confirmed description available if OCR outlasts the scan.
-      final fallback = description.isEmpty
-          ? (qualityHint ?? _strings.aimAtItem)
+      final moveBack =
+          subject != null &&
+          !subject.isAmbiguous &&
+          subject.touchesFrameEdge &&
+          subject.box.contains(const Offset(0.5, 0.5));
+      final answer = moveBack
+          ? '$description ${_strings.objectMoveBack}'.trim()
           : description;
+      // Keep the confirmed description available if OCR outlasts the scan.
+      final fallback = answer.isEmpty
+          ? (qualityHint ?? _strings.aimAtItem)
+          : answer;
       _lookFallback = fallback;
-      final text = look.type == ObjectScanType.itemWithText
-          ? await _readObjectText(frame, rotation, subject?.box ?? region)
-          : '';
+      var text = '';
+      if (look.type == ObjectScanType.itemWithText) {
+        text = await _readObjectText(
+          frame,
+          rotation,
+          subject?.box ?? look.fallbackTextRegion,
+        );
+      } else if (!moveBack &&
+          subject != null &&
+          !subject.isAmbiguous &&
+          _itemsWithPrintedLabels.contains(subject.name)) {
+        text = await _readObjectLabelBriefly(frame, rotation, subject.box);
+      }
       if (!identical(_requestedLook, look)) return;
       _endLook();
       if (description.isNotEmpty) {
@@ -1266,7 +1314,7 @@ class FramePipeline {
       _answerObjectScan(
         text.isEmpty
             ? fallback
-            : '$description ${_strings.visibleObjectText(text)}'.trim(),
+            : '$answer ${_strings.visibleObjectText(text)}'.trim(),
       );
       return;
     }
@@ -1369,6 +1417,20 @@ class FramePipeline {
     unawaited(
       AudioBus.instance.say(message, priority: SpeechPriority.navigation),
     );
+  }
+
+  Future<String> _readObjectLabelBriefly(
+    CameraFrame frame,
+    int rotation,
+    Rect region,
+  ) {
+    // A Dart timeout cannot cancel native OCR. Keep it to one outstanding
+    // optional label read even if the user asks again before OCR finishes.
+    if (_readingObjectLabel) return Future.value('');
+    _readingObjectLabel = true;
+    return _readObjectText(frame, rotation, region)
+        .whenComplete(() => _readingObjectLabel = false)
+        .timeout(_objectLabelWait, onTimeout: () => '');
   }
 
   /// Reads a small amount of clear text from the same frame as the close-up.

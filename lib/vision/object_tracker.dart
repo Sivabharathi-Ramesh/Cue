@@ -14,6 +14,7 @@ class ManualObjectScan {
   static const _frameGap = Duration(milliseconds: 300);
   static const _closeUp = Rect.fromLTRB(0.14, 0.16, 0.86, 0.84);
   static const _tighterCloseUp = Rect.fromLTRB(0.25, 0.28, 0.75, 0.72);
+  static const _fullFrame = Rect.fromLTRB(0, 0, 1, 1);
 
   final ObjectScanType type;
 
@@ -28,6 +29,10 @@ class ManualObjectScan {
 
   /// A close-up can find small items and check borderline full-frame labels.
   Rect? get region => _region;
+
+  /// Keep background writing out of a text-only answer after widening.
+  Rect get fallbackTextRegion =>
+      _region == _tighterCloseUp ? _tighterCloseUp : _closeUp;
 
   bool ready(DateTime now) {
     final last = _lastFrameAt;
@@ -63,8 +68,8 @@ class ManualObjectScan {
       requireCurrentDetection: true,
     );
     if (focused) {
+      const centre = Offset(0.5, 0.5);
       if (confirmed.isNotEmpty) {
-        const centre = Offset(0.5, 0.5);
         return [
           confirmed.reduce(
             (a, b) =>
@@ -75,9 +80,21 @@ class ManualObjectScan {
           ),
         ];
       }
-      // The tight crop can cut through the item. Give the wider crop enough
-      // fresh frames to confirm it.
-      if (crop == _tighterCloseUp &&
+      // A cut-off candidate can be a consequence of Cue's own zoom. Check
+      // the full view while there are still two passes to confirm the item.
+      if (crop != null &&
+          crop != _fullFrame &&
+          _passes <= _maxPasses - _tracker.passesToConfirm &&
+          seen.any(
+            (object) =>
+                !object.isAmbiguous &&
+                isConfidentDetection(object) &&
+                object.box.contains(centre) &&
+                boxInFullFrame(object.box, crop) == null,
+          )) {
+        _region = _fullFrame;
+        _tracker.reset();
+      } else if (crop == _tighterCloseUp &&
           (_passes == 3 || (_passes == 2 && detections.isEmpty))) {
         _region = _closeUp;
       }

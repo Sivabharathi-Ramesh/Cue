@@ -245,6 +245,62 @@ void main() {
     expect(spoken, results);
   });
 
+  test('a quick bottle description includes only clear text on it', () async {
+    boxes = [
+      {..._charger, 'class': 'bottle'},
+    ];
+    pipeline.setInterpretation(Interpretation.object);
+    expect(pipeline.requestManualRead(), isTrue);
+    await showFrame();
+    expect(ocrStarted.isCompleted, isFalse);
+    await showFrame();
+
+    expect(results.single.toLowerCase(), contains('bottle'));
+    expect(results.single, endsWith('The visible text reads, 20W, AB12.'));
+    expect(spoken, results);
+  });
+
+  test('slow label reading falls back to one object answer', () async {
+    pendingOcr = Completer<void>();
+    boxes = [
+      {..._charger, 'class': 'bottle'},
+    ];
+    pipeline.setInterpretation(Interpretation.object);
+    expect(pipeline.requestManualRead(), isTrue);
+    await showFrame();
+    pipeline.handleFrame(_frame());
+    await ocrStarted.future.timeout(const Duration(seconds: 2));
+    await Future<void>.delayed(const Duration(milliseconds: 850));
+
+    expect(results.single.toLowerCase(), contains('bottle'));
+    expect(results.single, isNot(contains('The visible text reads')));
+    pendingOcr!.complete();
+    await Future<void>.delayed(Duration.zero);
+    expect(spoken, results);
+    expect(results, hasLength(1));
+  });
+
+  for (final touchesActualEdge in [false, true]) {
+    test('framing checks the full view (edge: $touchesActualEdge)', () async {
+      final cropped = {..._charger, 'x1_norm': 0.0};
+      boxes = [cropped];
+      pipeline.setInterpretation(Interpretation.object);
+      expect(pipeline.requestManualRead(), isTrue);
+      await showFrame();
+      boxes = [touchesActualEdge ? cropped : _charger];
+      await showFrame();
+      expect(results, isEmpty);
+      await showFrame();
+
+      expect(results.single, contains('charger'));
+      expect(
+        results.single.contains('Move the phone back a little.'),
+        touchesActualEdge,
+      );
+      expect(spoken, results);
+    });
+  }
+
   test(
     'a close-up describes the item and reads only its clear markings',
     () async {

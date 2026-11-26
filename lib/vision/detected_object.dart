@@ -126,6 +126,9 @@ class DetectedObject {
   /// height and remains usable.
   bool get isVerticallyCropped => box.top <= 0.02 || box.bottom >= 0.98;
 
+  bool get touchesFrameEdge =>
+      isVerticallyCropped || box.left <= 0.02 || box.right >= 0.98;
+
   /// Whether this class stands upright in the real world.
   bool get isTallClass => _tallClasses.contains(name);
 
@@ -301,6 +304,7 @@ const Map<String, Set<String>> confusableObjectGroups = {
   'utensil': {'knife', 'fork', 'spoon'},
   'card': {'id card', 'bank card'},
   'medicine container': {'pill organizer', 'pill bottle', 'eye drop bottle'},
+  'toiletry bottle': {'shampoo bottle', 'lotion bottle'},
 };
 
 /// How close the top two labels may be before the name is not trusted.
@@ -412,6 +416,11 @@ const Map<String, double> minAreaForLargeClasses = {
   'door': 0.03,
   'window': 0.02,
   'microwave oven': 0.02,
+  'stove': 0.03,
+  'induction cooktop': 0.03,
+  'oven': 0.04,
+  'vacuum cleaner': 0.04,
+  'water purifier': 0.03,
 };
 
 /// Whether [object] is plausibly the size the class usually has.

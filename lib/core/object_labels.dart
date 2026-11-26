@@ -157,6 +157,7 @@ const _englishDisplayLabels = <String, String>{
 const _hindiAmbiguousLabels = <String, String>{
   'card': 'कार्ड',
   'medicine container': 'दवा का डिब्बा',
+  'toiletry bottle': 'बोतल',
 };
 
 /// Joins object labels into a spoken list.
